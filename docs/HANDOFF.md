@@ -35,7 +35,14 @@
 - no_audio / empty_transcript ウィジェット通知の非表示化
   - `recording-manager.ts`: `widget-notification` emit を削除、ログのみ残す
   - 動作（no_audio 時の自動キャンセル等）はそのまま維持
-  - コミット: `13d3123`
+  - コミット: `39aba13`
+- 文字起こし結果のクリップボードコピー機能
+  - `db/schema.ts`: `preferences` に `copyToClipboard?: boolean` 追加
+  - `services/settings-service.ts`: `AppPreferences` に `copyToClipboard` 追加（デフォルト: false）
+  - `trpc/routers/settings.ts`: Zod スキーマに追加
+  - `recording-manager.ts`: `pasteTranscription` 内で Electron `clipboard.writeText()` を呼び出し
+  - `preferences/index.tsx`: ON/OFF トグル UI 追加
+  - `en.json` / `ja.json`: ラベル追加
 
 ### 以前の完了分
 - フォーク元（amicalhq/amical）からフォーク
@@ -79,7 +86,18 @@
 - Apple Silicon では `GGML_NATIVE=OFF pnpm install` が必要（SVE テストがハングするため）
 - 開発モードで Whisper を使うには `pnpm download-node` の実行が必須
 - DMG ビルドには `SKIP_CODESIGNING=true` が必要（Apple Developer 証明書なしの場合）
-- マイクロフォン権限の付与には自己署名証明書での署名が必要（手順は `docs/SPECIFICATIONS.md` §9 参照）
+- **ビルド後のアプリでマイク/アクセシビリティ権限が通らない場合**: 自己署名証明書での署名が必要。以下の手順で対処（詳細は `docs/SPECIFICATIONS.md` §9）:
+  ```bash
+  # 1. 署名（証明書 "Amical Dev" は初回のみキーチェーンアクセスで作成）
+  codesign --deep --force -s "Amical Dev" apps/desktop/out/Amical-darwin-arm64/Amical.app
+  # 2. 権限リセット
+  tccutil reset Microphone com.amical.desktop
+  tccutil reset Accessibility com.amical.desktop
+  # 3. インストール
+  rm -rf /Applications/Amical.app
+  cp -R apps/desktop/out/Amical-darwin-arm64/Amical.app /Applications/Amical.app
+  # 4. /Applications/Amical.app を起動 → 権限ダイアログで許可
+  ```
 - `tests/services/transcriptions.test.ts` が既存バグ（`ServiceManager.createInstance is not a function`）で全件失敗する
 - `useAudioCapture` はウィジェットウィンドウで動作するため、メインウィンドウの設定変更を反映するには tRPC キャッシュのバイパスが必要
 
