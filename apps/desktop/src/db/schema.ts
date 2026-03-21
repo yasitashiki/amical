@@ -139,6 +139,7 @@ export interface AppSettingsData {
     silenceThreshold: number;
     maxRecordingDuration: number;
     preferredMicrophoneName?: string;
+    microphonePriorityList?: string[];
   };
   shortcuts?: {
     pushToTalk?: number[];
@@ -171,6 +172,7 @@ export interface AppSettingsData {
     muteSystemAudio?: boolean;
     muteDictationSounds?: boolean;
     autoDictateOnNewNote?: boolean;
+    copyToClipboard?: boolean;
   };
   telemetry?: {
     enabled?: boolean;

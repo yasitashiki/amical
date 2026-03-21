@@ -1,4 +1,4 @@
-import { ipcMain, app } from "electron";
+import { ipcMain, app, clipboard } from "electron";
 import { EventEmitter } from "node:events";
 import { Mutex } from "async-mutex";
 import { logger, logPerformance } from "../logger";
@@ -639,9 +639,8 @@ export class RecordingManager extends EventEmitter {
           ? this.recordingStoppedAt - this.recordingStartedAt
           : 0;
       if (sessionDurationMs > 5000) {
-        this.emit("widget-notification", { type: "empty_transcript" });
-        logger.audio.info("Emitted widget notification", {
-          type: "empty_transcript",
+        logger.audio.info("Empty transcript (notification suppressed)", {
+          sessionDurationMs,
         });
       }
     }
@@ -788,8 +787,7 @@ export class RecordingManager extends EventEmitter {
       if (this.recordingState === "recording" && !this.firstChunkReceived) {
         logger.audio.warn("No audio detected for 5 seconds");
         this.emit("no-audio-detected");
-        this.emit("widget-notification", { type: "no_audio" });
-        logger.audio.info("Emitted widget notification", { type: "no_audio" });
+        logger.audio.info("No audio detected (notification suppressed)");
         this.endRecording("no_audio");
       }
     }, NO_AUDIO_TIMEOUT);
@@ -904,6 +902,22 @@ export class RecordingManager extends EventEmitter {
     if (!transcription || typeof transcription !== "string") {
       logger.main.warn("Invalid transcription, not pasting");
       return;
+    }
+
+    // Copy to clipboard if enabled
+    try {
+      const settingsService = this.serviceManager.getService("settingsService");
+      const preferences = await settingsService.getPreferences();
+      if (preferences?.copyToClipboard) {
+        clipboard.writeText(transcription);
+        logger.main.info("Transcription copied to clipboard", {
+          textLength: transcription.length,
+        });
+      }
+    } catch (error) {
+      logger.main.warn("Failed to copy transcription to clipboard", {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
     try {

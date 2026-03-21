@@ -411,6 +411,10 @@
         "label": "ディクテーション音をミュート",
         "description": "録音開始・終了時のサウンドを無効にする"
       },
+      "copyToClipboard": {
+        "label": "クリップボードにコピー",
+        "description": "文字起こし結果をクリップボードにもコピーする"
+      },
       "autoDictateOnNewNote": {
         "label": "新しいノートで自動音声入力",
         "description": "新しいノートを作成した時に自動的に音声入力を開始"
@@ -619,14 +623,19 @@
       "microphone": {
         "label": "マイク",
         "description": "使用するマイクを選択してください。",
+        "priorityDescription": "ドラッグしてマイクの優先順位を変更できます。接続中の最も優先度の高いデバイスが使用されます。",
         "placeholder": "マイクを選択",
         "systemDefault": "システムデフォルト",
         "systemDefaultWithName": "システムデフォルト（{{deviceName}}）",
+        "systemDefaultFallback": "システムデフォルト（フォールバック）",
+        "connected": "接続中",
+        "disconnected": "未接続",
         "noDevices": "マイクがありません",
         "noDevicesHelp": "マイクが検出されませんでした。オーディオデバイスを確認してください。",
         "toast": {
           "changed": "マイクを{{deviceName}}に変更しました",
           "systemDefault": "システムデフォルトのマイクを使用します",
+          "priorityUpdated": "マイクの優先順位を更新しました",
           "changeFailed": "マイクの変更に失敗しました"
         }
       },
