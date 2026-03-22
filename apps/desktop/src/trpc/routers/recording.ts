@@ -115,6 +115,32 @@ export const recordingRouter = createRouter({
     });
   }),
 
+  // Intermediate transcription subscription (live preview during recording)
+  intermediateTranscription: procedure.subscription(({ ctx }) => {
+    return observable<string>((emit) => {
+      const recordingManager =
+        ctx.serviceManager.getService("recordingManager");
+
+      emit.next("");
+
+      const handleIntermediateTranscription = (text: string) => {
+        emit.next(text);
+      };
+
+      recordingManager.on(
+        "intermediate-transcription",
+        handleIntermediateTranscription,
+      );
+
+      return () => {
+        recordingManager.off(
+          "intermediate-transcription",
+          handleIntermediateTranscription,
+        );
+      };
+    });
+  }),
+
   // Widget notification subscription
   widgetNotifications: procedure.subscription(({ ctx }) => {
     return observable<WidgetNotification>((emit) => {

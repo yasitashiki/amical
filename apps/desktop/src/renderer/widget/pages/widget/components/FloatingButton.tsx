@@ -7,6 +7,28 @@ import { api } from "@/trpc/react";
 import { NOTE_WINDOW_FEATURE_FLAG } from "@/utils/feature-flags";
 import { useTranslation } from "react-i18next";
 
+// Intermediate transcription preview below the widget
+const IntermediateTranscription: React.FC<{ text: string }> = ({ text }) => {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [text]);
+
+  if (!text) return null;
+
+  return (
+    <div
+      ref={scrollRef}
+      className="mt-1 max-w-[400px] max-h-[120px] overflow-y-auto rounded-lg bg-black/70 backdrop-blur-md px-3 py-2 text-xs text-white/90 leading-relaxed ring-[1px] ring-black/60"
+    >
+      {text}
+    </div>
+  );
+};
+
 const NUM_WAVEFORM_BARS = 6; // Fewer bars to make room for stop button
 const DEBOUNCE_DELAY = 100; // milliseconds
 const TOAST_INTERACTION_STATE_EVENT = "widget:toast-interaction-state";
@@ -89,9 +111,20 @@ export const FloatingButton: React.FC = () => {
 
   const { recordingStatus, stopRecording, voiceDetected, startRecording } =
     useRecording();
+  const [intermediateText, setIntermediateText] = useState("");
   const isRecording =
     recordingStatus.state === "recording" ||
     recordingStatus.state === "starting";
+
+  // Subscribe to intermediate transcription updates
+  api.recording.intermediateTranscription.useSubscription(undefined, {
+    onData: (text: string) => {
+      setIntermediateText(text);
+    },
+    onError: (err) => {
+      console.error("Intermediate transcription subscription error:", err);
+    },
+  });
   const isStopping = recordingStatus.state === "stopping";
   const isHandsFreeMode = recordingStatus.mode === "hands-free";
   const isNoteWindowEnabled = noteWindowFeatureFlag.enabled;
@@ -250,22 +283,27 @@ export const FloatingButton: React.FC = () => {
   };
 
   return (
-    <div
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-      className={`
-        transition-all duration-200 ease-in-out
-        ${sizeClass}
-        bg-black/70 rounded-[24px] backdrop-blur-md ring-[1px] ring-black/60 shadow-[0px_0px_15px_0px_rgba(0,0,0,0.40)]
-        before:content-[''] before:absolute before:inset-[1px] before:rounded-[23px] before:outline before:outline-white/15 before:pointer-events-none
-        mb-2 cursor-pointer select-none
-      `}
-      style={{ pointerEvents: "auto" }}
-    >
-      {isWidgetActive && (
-        <div className="flex gap-[2px] h-full w-full justify-between">
-          {renderWidgetContent()}
-        </div>
+    <div className="flex flex-col items-center">
+      <div
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        className={`
+          transition-all duration-200 ease-in-out
+          ${sizeClass}
+          bg-black/70 rounded-[24px] backdrop-blur-md ring-[1px] ring-black/60 shadow-[0px_0px_15px_0px_rgba(0,0,0,0.40)]
+          before:content-[''] before:absolute before:inset-[1px] before:rounded-[23px] before:outline before:outline-white/15 before:pointer-events-none
+          mb-2 cursor-pointer select-none
+        `}
+        style={{ pointerEvents: "auto" }}
+      >
+        {isWidgetActive && (
+          <div className="flex gap-[2px] h-full w-full justify-between">
+            {renderWidgetContent()}
+          </div>
+        )}
+      </div>
+      {isRecording && intermediateText && (
+        <IntermediateTranscription text={intermediateText} />
       )}
     </div>
   );
