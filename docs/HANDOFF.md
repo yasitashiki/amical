@@ -43,6 +43,11 @@
   - `recording-manager.ts`: `pasteTranscription` 内で Electron `clipboard.writeText()` を呼び出し
   - `preferences/index.tsx`: ON/OFF トグル UI 追加
   - `en.json` / `ja.json`: ラベル追加
+- 中間文字起こしプレビュー機能（録音中にウィジェット下部にテキスト表示）
+  - `recording-manager.ts`: `processStreamingChunk` の結果を `intermediate-transcription` イベントで emit、録音停止時にクリア
+  - `trpc/routers/recording.ts`: `intermediateTranscription` subscription 追加
+  - `FloatingButton.tsx`: `IntermediateTranscription` コンポーネント追加（半透明背景、自動スクロール）
+  - 沈黙検出閾値を 3000ms → 1500ms に短縮（`whisper-provider.ts`, `amical-cloud-provider.ts`）
 
 ### 以前の完了分
 - フォーク元（amicalhq/amical）からフォーク
@@ -72,8 +77,8 @@
 
 | ブランチ | 状態 | 内容 |
 |---------|------|------|
-| `main` | push 済み | upstream v1.0.4 + Issue #88 + Escape キャンセル |
-| `feat/microphone-priority-list` | ローカルのみ | マイク優先度リスト + 通知非表示 |
+| `main` | push 済み | upstream v1.0.4 + Issue #88 + Escape キャンセル + マイク優先度リスト + クリップボードコピー + 通知非表示 |
+| `feat/intermediate-transcription` | ローカルのみ | 中間文字起こしプレビュー + 沈黙閾値短縮 |
 | `wip/custom-system-prompt` | ローカルのみ | カスタムシステムプロンプト（WIP、型エラーあり） |
 
 ---

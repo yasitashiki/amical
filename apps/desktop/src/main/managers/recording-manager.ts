@@ -364,6 +364,9 @@ export class RecordingManager extends EventEmitter {
       this.terminationCode = code;
       this.recordingStoppedAt = performance.now();
 
+      // Clear intermediate transcription preview
+      this.emit("intermediate-transcription", "");
+
       // State transition first - signals worklet to stop and send final chunk
       this.setState("stopping");
       this.clearTimers();
@@ -484,11 +487,17 @@ export class RecordingManager extends EventEmitter {
         const transcriptionService = this.serviceManager.getService(
           "transcriptionService",
         );
-        await transcriptionService.processStreamingChunk({
-          sessionId,
-          audioChunk: chunk,
-          recordingStartedAt: this.recordingStartedAt || undefined,
-        });
+        const intermediateResult =
+          await transcriptionService.processStreamingChunk({
+            sessionId,
+            audioChunk: chunk,
+            recordingStartedAt: this.recordingStartedAt || undefined,
+          });
+
+        // Emit intermediate transcription for live preview
+        if (intermediateResult) {
+          this.emit("intermediate-transcription", intermediateResult);
+        }
       } catch (error) {
         logger.audio.error("Error processing chunk:", error);
       }
