@@ -48,6 +48,11 @@
   - `trpc/routers/recording.ts`: `intermediateTranscription` subscription 追加
   - `FloatingButton.tsx`: `IntermediateTranscription` コンポーネント追加（半透明背景、自動スクロール）
   - 沈黙検出閾値を 3000ms → 1500ms に短縮（`whisper-provider.ts`, `amical-cloud-provider.ts`）
+- CSV 用語集一括インポートスクリプト
+  - `scripts/import-vocabulary.ts`: sqlite3 CLI 経由で vocabulary テーブルに一括 INSERT
+  - `scripts/vocabulary-sample.csv`: CSV フォーマット例
+  - CSV フォーマット: `変換元1,変換元2:変換先`（複数の変換元を 1 つの変換先にマッピング可能）
+  - 使い方: `pnpm tsx scripts/import-vocabulary.ts [--dry-run] <csv-file>`
 
 ### 以前の完了分
 - フォーク元（amicalhq/amical）からフォーク
