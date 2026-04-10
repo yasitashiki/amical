@@ -46,6 +46,7 @@ export class ShortcutManager extends EventEmitter {
     newNote: false,
   };
   private escapeWasPressed = false;
+  private ctrlF9WasPressed = false;
 
   constructor(settingsService: SettingsService, nativeBridge: NativeBridge) {
     super();
@@ -315,6 +316,22 @@ export class ShortcutManager extends EventEmitter {
       this.emit("cancel-recording-triggered");
     }
     this.escapeWasPressed = isEscapePressed;
+
+    // Check Ctrl+F9 for toggle recording without clipboard copy (hardcoded)
+    const ctrlKeyCode =
+      process.platform === "win32"
+        ? WINDOWS_KEYCODES.CTRL
+        : MAC_KEYCODES.CTRL;
+    const f9KeyCode =
+      process.platform === "win32" ? WINDOWS_KEYCODES.F9 : MAC_KEYCODES.F9;
+    const isCtrlF9Pressed =
+      activeKeysList.length === 2 &&
+      activeKeysList.includes(ctrlKeyCode) &&
+      activeKeysList.includes(f9KeyCode);
+    if (isCtrlF9Pressed && !this.ctrlF9WasPressed) {
+      this.emit("toggle-recording-no-clipboard-triggered");
+    }
+    this.ctrlF9WasPressed = isCtrlF9Pressed;
   }
 
   private isPTTShortcutPressed(): boolean {

@@ -78,6 +78,8 @@ export class RecordingManager extends EventEmitter {
   private systemAudioMuted: boolean = false;
   // Sound muting for current session
   private soundsMuted: boolean = false;
+  // Skip clipboard copy for current session
+  private skipClipboard: boolean = false;
 
   constructor(private serviceManager: ServiceManager) {
     super();
@@ -116,6 +118,14 @@ export class RecordingManager extends EventEmitter {
     shortcutManager.on("cancel-recording-triggered", async () => {
       await this.cancelRecording();
     });
+
+    // Handle toggle recording without clipboard copy (Ctrl+F9)
+    shortcutManager.on(
+      "toggle-recording-no-clipboard-triggered",
+      async () => {
+        await this.toggleHandsFree({ skipClipboard: true });
+      },
+    );
   }
 
   private setState(newState: RecordingState): void {
@@ -209,7 +219,9 @@ export class RecordingManager extends EventEmitter {
   }
 
   // Toggle shortcut pressed
-  public async toggleHandsFree() {
+  public async toggleHandsFree(
+    options?: { skipClipboard?: boolean },
+  ) {
     // Double-tap detection: timer pending means quick release happened
     if (this.cancelTimer) {
       clearTimeout(this.cancelTimer);
@@ -221,6 +233,7 @@ export class RecordingManager extends EventEmitter {
 
     // Not recording? Start hands-free recording
     if (this.recordingState === "idle") {
+      this.skipClipboard = options?.skipClipboard ?? false;
       this.recordingInitiatedAt = Date.now();
       await this.doStart("hands-free");
       return;
@@ -640,7 +653,7 @@ export class RecordingManager extends EventEmitter {
     });
 
     if (result) {
-      await this.pasteTranscription(result);
+      await this.pasteTranscription(result, this.skipClipboard);
     } else {
       // Check for empty transcript notification
       const sessionDurationMs =
@@ -886,6 +899,7 @@ export class RecordingManager extends EventEmitter {
     this.terminationCode = null;
     this.systemAudioMuted = false;
     this.soundsMuted = false;
+    this.skipClipboard = false;
     this.clearTimers();
   }
 
@@ -907,26 +921,34 @@ export class RecordingManager extends EventEmitter {
     return filePath;
   }
 
-  private async pasteTranscription(transcription: string): Promise<void> {
+  private async pasteTranscription(
+    transcription: string,
+    skipClipboard: boolean = false,
+  ): Promise<void> {
     if (!transcription || typeof transcription !== "string") {
       logger.main.warn("Invalid transcription, not pasting");
       return;
     }
 
-    // Copy to clipboard if enabled
-    try {
-      const settingsService = this.serviceManager.getService("settingsService");
-      const preferences = await settingsService.getPreferences();
-      if (preferences?.copyToClipboard) {
-        clipboard.writeText(transcription);
-        logger.main.info("Transcription copied to clipboard", {
-          textLength: transcription.length,
+    // Copy to clipboard if enabled and not skipped
+    if (!skipClipboard) {
+      try {
+        const settingsService =
+          this.serviceManager.getService("settingsService");
+        const preferences = await settingsService.getPreferences();
+        if (preferences?.copyToClipboard) {
+          clipboard.writeText(transcription);
+          logger.main.info("Transcription copied to clipboard", {
+            textLength: transcription.length,
+          });
+        }
+      } catch (error) {
+        logger.main.warn("Failed to copy transcription to clipboard", {
+          error: error instanceof Error ? error.message : String(error),
         });
       }
-    } catch (error) {
-      logger.main.warn("Failed to copy transcription to clipboard", {
-        error: error instanceof Error ? error.message : String(error),
-      });
+    } else {
+      logger.main.info("Clipboard copy skipped for this session");
     }
 
     try {

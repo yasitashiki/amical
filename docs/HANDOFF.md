@@ -53,6 +53,11 @@
   - `scripts/vocabulary-sample.csv`: CSV フォーマット例
   - CSV フォーマット: `変換元1,変換元2:変換先`（複数の変換元を 1 つの変換先にマッピング可能）
   - 使い方: `pnpm tsx scripts/import-vocabulary.ts [--dry-run] <csv-file>`
+- Ctrl+F9 でクリップボードコピーなし録音モード
+  - `shortcut-manager.ts`: Ctrl+F9 検出（ハードコード、Escape キーと同パターン）
+  - `recording-manager.ts`: `skipClipboard` セッションフラグ追加、`toggleHandsFree({ skipClipboard: true })` で開始
+  - `pasteTranscription` に `skipClipboard` パラメータ追加、true の場合 `clipboard.writeText()` をスキップ
+  - 備考: ネイティブヘルパー（Swift）の `pasteText` は内部でクリップボード退避→Cmd+V→復元を行う仕様（upstream の実装）
 
 ### 以前の完了分
 - フォーク元（amicalhq/amical）からフォーク
