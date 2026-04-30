@@ -1,6 +1,6 @@
 # 引き継ぎ書（HANDOFF）
 
-最終更新: 2026-03-21
+最終更新: 2026-04-29
 
 ---
 
@@ -100,6 +100,15 @@
 - ネイティブビルド（whisper-wrapper）にはプラットフォーム固有の依存がある
 - Apple Silicon では `GGML_NATIVE=OFF pnpm install` が必要（SVE テストがハングするため）
 - 開発モードで Whisper を使うには `pnpm download-node` の実行が必須
+- **開発起動 (`pnpm start`) と本番アプリで DB が分かれる**:
+  - 開発起動時の DB: `apps/desktop/amical.db`
+  - 本番アプリの DB: `~/Library/Application Support/Amical/amical.db`
+  - `pnpm start` で置換ルールや履歴を検証する場合、本番側に入っている vocabulary は自動では見えない
+  - 今回はこの差分で、`神楽 -> CAGRA` の replacement が効かないように見えていた
+  - 開発DBへ本番DBの vocabulary をコピーすると、同じ置換条件で再現確認できる
+- **ログも用途で見分ける**:
+  - 開発起動時のログ: `~/Library/Application Support/Amical/logs/amical-dev.log`
+  - 本番アプリのログ: `~/Library/Logs/Amical/amical.log`
 - DMG ビルドには `SKIP_CODESIGNING=true` が必要（Apple Developer 証明書なしの場合）
 - **ビルド後のアプリでマイク/アクセシビリティ権限が通らない場合**: 自己署名証明書での署名が必要。以下の手順で対処（詳細は `docs/SPECIFICATIONS.md` §9）:
   ```bash
@@ -113,6 +122,11 @@
   cp -R apps/desktop/out/Amical-darwin-arm64/Amical.app /Applications/Amical.app
   # 4. /Applications/Amical.app を起動 → 権限ダイアログで許可
   ```
+- **今回の署名トラブルの実原因**:
+  - `app.asar.unpacked` 内に workspace の絶対パスを向く symlink が残ると、トップレベル `.app` の署名が壊れる
+  - 実際には `@amical/whisper-wrapper/node_modules/@amical/typescript-config` の symlink が原因だった
+  - 現在は `forge.config.ts` でコピー済み依存配下の symlink を再帰的に実体化している
+  - package 後に `codesign --verify --deep --strict` で検証してから `/Applications` に入れるのが安全
 - `tests/services/transcriptions.test.ts` が既存バグ（`ServiceManager.createInstance is not a function`）で全件失敗する
 - `useAudioCapture` はウィジェットウィンドウで動作するため、メインウィンドウの設定変更を反映するには tRPC キャッシュのバイパスが必要
 

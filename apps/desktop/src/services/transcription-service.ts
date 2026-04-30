@@ -611,7 +611,7 @@ export class TranscriptionService {
         : dictationSettings.selectedLanguage;
 
     // Load vocabulary and replacements
-    const vocabEntries = await getVocabulary({ limit: 50 });
+    const vocabEntries = await getVocabulary();
     for (const entry of vocabEntries) {
       if (entry.isReplacement) {
         context.sharedData.replacements.set(

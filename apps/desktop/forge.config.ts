@@ -21,7 +21,7 @@ import {
   readlinkSync,
   copyFileSync,
 } from "node:fs";
-import { join, normalize } from "node:path";
+import { dirname, join, normalize, resolve } from "node:path";
 // Use flora-colossus for finding all dependencies of EXTERNAL_DEPENDENCIES
 // flora-colossus is maintained by MarshallOfSound (a top electron-forge contributor)
 // already included as a dependency of electron-packager/galactus (so we do NOT have to add it to package.json)
@@ -178,44 +178,46 @@ const config: ForgeConfig = {
         }
       }
 
-      // Second pass: Replace any symlinks with dereferenced copies
+      const dereferenceSymlink = (symlinkPath: string) => {
+        const symlinkTarget = readlinkSync(symlinkPath);
+        const sourcePath = normalize(
+          resolve(dirname(symlinkPath), symlinkTarget),
+        );
+
+        console.log(`  Symlink points to: ${sourcePath}`);
+
+        rmSync(symlinkPath, { recursive: true, force: true });
+        cpSync(sourcePath, symlinkPath, {
+          recursive: true,
+          force: true,
+          dereference: true,
+        });
+      };
+
+      const dereferenceSymlinksRecursively = (targetPath: string) => {
+        if (!existsSync(targetPath)) return;
+
+        const stats = lstatSync(targetPath);
+        if (stats.isSymbolicLink()) {
+          console.log(`Found symlink at ${targetPath}, replacing...`);
+          dereferenceSymlink(targetPath);
+          return;
+        }
+
+        if (!stats.isDirectory()) return;
+
+        for (const childName of readdirSync(targetPath)) {
+          dereferenceSymlinksRecursively(join(targetPath, childName));
+        }
+      };
+
+      // Second pass: Replace any symlinks inside copied dependencies
       console.log("Checking for symlinks in copied dependencies...");
       for (const dep of nativeModuleDependenciesToPackage) {
         const localDepPath = join(localNodeModules, dep);
 
         try {
-          if (existsSync(localDepPath)) {
-            const stats = lstatSync(localDepPath);
-            if (stats.isSymbolicLink()) {
-              console.log(
-                `Found symlink for ${dep}, replacing with dereferenced copy...`,
-              );
-
-              // Read where the symlink points to
-              const symlinkTarget = readlinkSync(localDepPath);
-              let absoluteTarget = symlinkTarget;
-              if (process.platform !== "win32") {
-                absoluteTarget = join(localDepPath, "..", symlinkTarget);
-              }
-              const sourcePath = normalize(absoluteTarget);
-
-              console.log(`  Symlink points to: ${sourcePath}`);
-
-              // Remove the symlink
-              rmSync(localDepPath, { recursive: true, force: true });
-
-              // Copy with dereference to get actual content
-              cpSync(sourcePath, localDepPath, {
-                recursive: true,
-                force: true,
-                dereference: true, // Follow symlinks and copy actual content
-              });
-
-              console.log(
-                `✓ Successfully replaced symlink for ${dep} with actual content`,
-              );
-            }
-          }
+          dereferenceSymlinksRecursively(localDepPath);
         } catch (error) {
           console.error(`Failed to check/replace symlink for ${dep}:`, error);
         }

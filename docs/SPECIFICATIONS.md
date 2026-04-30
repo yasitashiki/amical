@@ -377,11 +377,27 @@ cd apps/desktop
 codesign --deep --force -s "Amical Dev" out/Amical-darwin-arm64/Amical.app
 ```
 
+**署名時の注意**
+
+- `@amical/whisper-wrapper` 配下に workspace symlink が残っていると、`codesign --verify --deep --strict` が失敗する
+- 実際に `app.asar.unpacked/node_modules/@amical/whisper-wrapper/node_modules/@amical/typescript-config`
+  のような絶対パス symlink が混入し、トップレベルバンドル署名を壊した
+- 現在は [apps/desktop/forge.config.ts](/Users/a13097/development/amical/apps/desktop/forge.config.ts)
+  で、コピー済み依存内の symlink を再帰的に実体化してから package する
+- package 後は `codesign --deep --force -s "Amical Dev"` を再実行するのが安全
+
+確認:
+```bash
+codesign --verify --deep --strict --verbose=2 out/Amical-darwin-arm64/Amical.app
+```
+
+`valid on disk` と `satisfies its Designated Requirement` が出れば、自己署名アプリとしては使用可能。
+
 **3. インストール**
 
 ```bash
-# 既存アプリを削除してからコピー
-rm -rf /Applications/Amical.app
+# 既存アプリを退避してからコピー
+mv /Applications/Amical.app /Applications/Amical.backup.app
 cp -R out/Amical-darwin-arm64/Amical.app /Applications/Amical.app
 ```
 

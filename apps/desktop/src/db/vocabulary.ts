@@ -30,7 +30,7 @@ export async function getVocabulary(
   } = {},
 ) {
   const {
-    limit = 50,
+    limit,
     offset = 0,
     sortBy = "dateAdded",
     sortOrder = "desc",
@@ -54,20 +54,22 @@ export async function getVocabulary(
 
   // Build query with conditional where clause
   if (search) {
-    return await db
+    const query = db
       .select()
       .from(vocabulary)
       .where(like(vocabulary.word, `%${search}%`))
       .orderBy(orderFn(sortColumn))
-      .limit(limit)
       .offset(offset);
+
+    return typeof limit === "number" ? query.limit(limit) : query;
   } else {
-    return await db
+    const query = db
       .select()
       .from(vocabulary)
       .orderBy(orderFn(sortColumn))
-      .limit(limit)
       .offset(offset);
+
+    return typeof limit === "number" ? query.limit(limit) : query;
   }
 }
 
