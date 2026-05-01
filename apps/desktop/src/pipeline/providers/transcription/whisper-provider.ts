@@ -46,7 +46,7 @@ export class WhisperProvider implements TranscriptionProvider {
   // Configuration
   private readonly FRAME_SIZE = 512; // 32ms at 16kHz
   private readonly MIN_AUDIO_DURATION_MS = 500; // Minimum buffered audio duration before silence-based transcription
-  private readonly MAX_SILENCE_DURATION_MS = 1500; // Max silence before cutting
+  private readonly MAX_SILENCE_DURATION_MS = 1200; // Conservative pause threshold for earlier segment emission
   private readonly SAMPLE_RATE = 16000;
   private readonly SPEECH_PROBABILITY_THRESHOLD = 0.2; // Threshold for speech detection
 

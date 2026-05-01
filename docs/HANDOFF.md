@@ -1,139 +1,202 @@
 # 引き継ぎ書（HANDOFF）
 
-最終更新: 2026-04-29
+最終更新: 2026-05-01
 
 ---
 
 ## 現在の状態
 
-- **ブランチ**: `feat/microphone-priority-list`（`main` から派生）
-- **バージョン**: v1.0.4（upstream v1.0.4 を取り込み済み）
-- **ステータス**: マイク優先度リスト機能を実装中、動作確認済み
+- **ブランチ**: `main`
+- **HEAD**: `ebbb1a6 Refine recording cancellation and preview behavior`
+- **push 状態**: `origin/main` に対して 1 commit ahead（`ebbb1a6` は未 push）
+- **upstream 同期状態**: `upstream/main` の `a63c5b7` まで取り込み済み（v1.2.0 系）
+- **作業ツリー**: clean
+- **ステータス**: upstream 取り込み後の追加小変更として、runtime path ログ追加、`Ctrl+Escape` キャンセル、preview の conservative pause 調整、cancel 後 preview 残留修正、`Escape` ダブルクリック誤キャンセル無効化まで commit 済み。`pnpm type:check`、`SKIP_CODESIGNING=true pnpm package:arm64`、`codesign --verify --deep --strict`、`/Applications/Amical.app` 差し替えは実施済み。最新ビルドの手動起動確認は未実施
 
 ---
 
-## 直近の作業内容
+## 今回完了した内容
 
-### 完了（2026-03-21）
-- upstream（amicalhq/amical）v1.0.4 までの変更を main に取り込み済み
-  - `git remote add upstream https://github.com/amicalhq/amical.git` 設定済み
-  - merge 済み、origin/main に push 済み
-- Escape キー録音キャンセル機能（main にコミット・push 済み）
-  - `recording-manager.ts`: `TerminationCode` に `"cancelled"` 追加、`cancelRecording()` メソッド追加
-  - `shortcut-manager.ts`: Escape キー検出ロジック追加（ハードコード、修飾キー併用時は無視）
-  - 既存の `handleFinalChunk()` の破棄パス（`code && code !== "dismissed"`）で自動処理
-  - コミット: `83e6a6b`
-- マイク優先度リスト機能（`feat/microphone-priority-list` ブランチ）
-  - `db/schema.ts`: `microphonePriorityList?: string[]` 追加
-  - `trpc/routers/settings.ts`: `setMicrophonePriorityList` ミューテーション追加
-  - `hooks/useAudioCapture.ts`: 優先度リストから接続中デバイスを順に選択するロジック
-    - **重要**: ウィジェットウィンドウとメインウィンドウ間の tRPC キャッシュ不整合を回避するため、`utils.settings.getSettings.fetch()` で録音開始時に毎回最新設定を取得
-  - `MicrophoneSettings.tsx`: `@dnd-kit` によるドラッグ＆ドロップ並べ替え UI
-  - `OnboardingMicrophoneSelect.tsx`: 優先度リスト API に移行（Select UI は維持）
-  - `en.json` / `ja.json`: 新ラベル追加
-  - コミット: `b74a470`
-- no_audio / empty_transcript ウィジェット通知の非表示化
-  - `recording-manager.ts`: `widget-notification` emit を削除、ログのみ残す
-  - 動作（no_audio 時の自動キャンセル等）はそのまま維持
-  - コミット: `39aba13`
-- 文字起こし結果のクリップボードコピー機能
-  - `db/schema.ts`: `preferences` に `copyToClipboard?: boolean` 追加
-  - `services/settings-service.ts`: `AppPreferences` に `copyToClipboard` 追加（デフォルト: false）
-  - `trpc/routers/settings.ts`: Zod スキーマに追加
-  - `recording-manager.ts`: `pasteTranscription` 内で Electron `clipboard.writeText()` を呼び出し
-  - `preferences/index.tsx`: ON/OFF トグル UI 追加
-  - `en.json` / `ja.json`: ラベル追加
-- 中間文字起こしプレビュー機能（録音中にウィジェット下部にテキスト表示）
-  - `recording-manager.ts`: `processStreamingChunk` の結果を `intermediate-transcription` イベントで emit、録音停止時にクリア
-  - `trpc/routers/recording.ts`: `intermediateTranscription` subscription 追加
-  - `FloatingButton.tsx`: `IntermediateTranscription` コンポーネント追加（半透明背景、自動スクロール）
-  - 沈黙検出閾値を 3000ms → 1500ms に短縮（`whisper-provider.ts`, `amical-cloud-provider.ts`）
-- CSV 用語集一括インポートスクリプト
-  - `scripts/import-vocabulary.ts`: sqlite3 CLI 経由で vocabulary テーブルに一括 INSERT
-  - `scripts/vocabulary-sample.csv`: CSV フォーマット例
-  - CSV フォーマット: `変換元1,変換元2:変換先`（複数の変換元を 1 つの変換先にマッピング可能）
-  - 使い方: `pnpm tsx scripts/import-vocabulary.ts [--dry-run] <csv-file>`
-- Ctrl+F9 でクリップボードコピーなし録音モード
-  - `shortcut-manager.ts`: Ctrl+F9 検出（ハードコード、Escape キーと同パターン）
-  - `recording-manager.ts`: `skipClipboard` セッションフラグ追加、`toggleHandsFree({ skipClipboard: true })` で開始
-  - `pasteTranscription` に `skipClipboard` パラメータ追加、true の場合 `clipboard.writeText()` をスキップ
-  - 備考: ネイティブヘルパー（Swift）の `pasteText` は内部でクリップボード退避→Cmd+V→復元を行う仕様（upstream の実装）
+### 1. upstream 取り込み
 
-### 以前の完了分
-- フォーク元（amicalhq/amical）からフォーク
-- プロジェクト構造・技術仕様の調査
-- docs/ 配下のドキュメント整備
-- 開発環境のセットアップ
-  - Volta による Node 24 + pnpm 10.15.0 のピン留め
-  - cmake インストール（Homebrew）
-  - whisper.cpp サブモジュール初期化
-  - `GGML_NATIVE=OFF pnpm install` でネイティブビルド完了
-  - `pnpm download-node` で Whisper ワーカー用 Node バイナリ取得
-- Issue #88: 日本語句読点の修正（main にコミット・push 済み）
-- ターミナルアプリ（iTerm2等）での句読点欠落の修正（main にコミット・push 済み）
+- `upstream/main` を `main` に merge 済み
+- 競合は以下の 3 ファイルのみで解消済み
+  - `apps/desktop/src/db/schema.ts`
+  - `apps/desktop/src/services/settings-service.ts`
+  - `apps/desktop/src/trpc/routers/settings.ts`
+- 解消方針:
+  - fork 側の `copyToClipboard` を維持
+  - upstream 側の `preserveClipboard` を追加
+  - upstream 側の `history.retentionPeriod` を追加
 
-### WIP（未完成）
-- カスタムシステムプロンプト機能（`wip/custom-system-prompt` ブランチに退避）
-  - UI・i18n・サービス層の変更あり、型エラーが残っている
-  - フォーマット機能が有効でないと UI 表示の確認ができない
+### 2. main に残した直近の独自変更
 
-### 未着手
-- upstream への PR 作成（Issue #88 修正、Escape キャンセル、マイク優先度リスト等）
-- カスタムプロンプト機能の完成
+- `2d34f32 Fix signing symlinks and load full vocabulary`
+- 主な内容:
+  - vocabulary の 50 件制限を外し、全文読み込みに変更
+  - packaging 時に `@amical/whisper-wrapper` 配下の入れ子 symlink を再帰的に実体化するよう修正
+- 関連ファイル:
+  - `apps/desktop/forge.config.ts`
+  - `apps/desktop/src/db/vocabulary.ts`
+  - `apps/desktop/src/services/transcription-service.ts`
+
+### 3. build / signing / 起動確認
+
+- `pnpm build:types`
+  - 理由: `@amical/types/dist` が古く、`preserveClipboard` の型が desktop 側に見えていなかったため
+- `pnpm type:check`
+  - 成功
+- `SKIP_CODESIGNING=true pnpm package:arm64`
+  - 成功
+- 手動自己署名
+  - `codesign --deep --force -s "Amical Dev" out/Amical-darwin-arm64/Amical.app`
+- 署名検証
+  - `codesign --verify --deep --strict --verbose=2 out/Amical-darwin-arm64/Amical.app`
+  - `valid on disk` / `satisfies its Designated Requirement` を確認済み
+- workspace の build 成果物を起動確認済み
+- `/Applications/Amical.app` へ差し替え済み
+  - 最新の旧アプリ退避先: `/Applications/Amical.backup-20260501-113629.app`
+  - このセッション中の追加退避版:
+    - `/Applications/Amical.backup-20260501-105847.app`
+    - `/Applications/Amical.backup-20260501-095157.app`
+    - `/Applications/Amical.backup-20260501-084453.app`
+- `/Applications/Amical.app` でも `codesign --verify --deep --strict --verbose=2` を実施済み
+- 最新ビルドの手動起動確認は未実施
+
+### 4. `ebbb1a6` で commit 済みの追加小変更
+
+- 起動時ログの強化
+  - `logger.ts` / `db/index.ts` で、`runtimeMode`、`isPackaged`、`userDataPath`、`dbPath`、`logPath`、`migrationsPath`、`cwd` を info ログに出すよう変更
+  - 開発 DB / 本番 DB の取り違えをログだけで即切り分けできるようにした
+  - 関連ファイル:
+    - `apps/desktop/src/main/logger.ts`
+    - `apps/desktop/src/db/index.ts`
+- 録音キャンセル shortcut の変更
+  - 録音中のキャンセルを `Escape` 単独から `Ctrl+Escape` に変更
+  - 左右どちらの Ctrl でも反応する
+  - `Escape` ダブルクリックではキャンセルしないよう修正
+  - `Ctrl+Escape` 判定は current key event の `ctrlKey` と active key exact match を併用する
+  - 関連ファイル:
+    - `apps/desktop/src/main/managers/shortcut-manager.ts`
+    - `apps/desktop/src/main/managers/recording-manager.ts`
+- 録音中 intermediate preview の forced partial / 区切り確定表示はロールバック済み
+  - 原因:
+    - partial を早く打ちすぎると、local Whisper が短い断片をその場で確定してしまい、後から長い文脈で再認識して置き換える処理がなかった
+    - preview 専用の荒い表示ではなく、partial 結果がそのまま最終文字起こしの下書きにも積まれていたため、精度低下を招いていた
+  - 現在の挙動:
+    - preview は従来どおり provider が返した累積テキストを表示する
+    - local / cloud ともに、silence-based の chunk 発火へ戻している
+  - 現在の追加調整:
+    - precision 優先のまま表示を少し早めるため、pause 判定閾値だけを保守的に短縮
+    - local Whisper: `1500ms -> 1200ms`
+    - Amical Cloud: `1500ms -> 1300ms`
+  - cancel / stop 中に in-flight chunk が返っても stale preview を emit しないよう修正
+  - widget 側でも `recording` 以外の state に遷移したら `intermediateText` を即 clear する
+  - 関連ファイル:
+    - `apps/desktop/src/pipeline/providers/transcription/whisper-provider.ts`
+    - `apps/desktop/src/pipeline/providers/transcription/amical-cloud-provider.ts`
+    - `apps/desktop/src/main/managers/recording-manager.ts`
+    - `apps/desktop/src/renderer/widget/pages/widget/components/FloatingButton.tsx`
 
 ---
 
-## ブランチ構成
+## 重要な注意点
+
+### 開発 DB と本番 DB は別
+
+- 開発起動 (`pnpm start`) の DB:
+  - `apps/desktop/amical.db`
+- 本番アプリの DB:
+  - `~/Library/Application Support/Amical/amical.db`
+- `神楽 -> CAGRA` が効かなかった主因は、開発起動と本番アプリで見ている DB が別だったため
+- 本番 DB の vocabulary を開発 DB に入れると replacement は期待どおり効くことを確認済み
+
+### ログ出力先も別
+
+- 開発起動:
+  - `~/Library/Application Support/Amical/logs/amical-dev.log`
+- 本番アプリ:
+  - `~/Library/Logs/Amical/amical.log`
+
+### packaging / signing
+
+- Apple Developer 証明書なしで package する場合、まず `SKIP_CODESIGNING=true` が必要
+- その後で手動 `codesign --deep --force -s "Amical Dev"` を実行する
+- macOS 向け変更で packaging に触れたら、最後に必ず以下を確認する
+  - `codesign --verify --deep --strict --verbose=2`
+
+### 署名トラブルの実原因
+
+- `app.asar.unpacked` 内に workspace の絶対パスを向く symlink が残ると、トップレベル `.app` の署名が壊れる
+- 実際には `@amical/whisper-wrapper` 配下の入れ子 symlink が原因だった
+- 現在は `forge.config.ts` でコピー済み依存配下の symlink を再帰的に実体化している
+
+### テストの注意
+
+- `tests/services/transcriptions.test.ts` は既知バグで全件失敗する
+- 失敗時は今回の変更起因と決めつけず、既知失敗かを先に切り分けること
+
+---
+
+## custom-system-prompt メモ
+
+- `custom-system-prompt` は **main に未マージ**
+- 関連ブランチ:
+  - `feat/custom-system-prompt`
+  - `wip/custom-system-prompt`
+  - `feature-custom-prompt`（存在はするが今回未使用）
+- 状態:
+  - `feat/custom-system-prompt` には core 実装がある
+    - `FormatterConfig` への field 追加
+    - `formatter-prompt.ts` への `## Additional Instructions` 差し込み
+    - prompt 単体テスト
+  - `wip/custom-system-prompt` には UI / i18n / service 層の途中実装がある
+- ただし、これらの branch は upstream 取り込み前の前提で書かれており、そのまま復活させるのは危険
+- 再開するなら、**現行 `main` に最小差分で載せ直す** 方針が安全
+- 想定対象ファイル:
+  - `apps/desktop/src/types/formatter.ts`
+  - `apps/desktop/src/db/schema.ts`
+  - `apps/desktop/src/trpc/routers/settings.ts`
+  - `apps/desktop/src/pipeline/core/pipeline-types.ts`
+  - `apps/desktop/src/pipeline/providers/formatting/formatter-prompt.ts`
+  - `apps/desktop/src/services/transcription-service.ts`
+  - `apps/desktop/src/renderer/main/pages/settings/dictation/hooks/use-formatting-settings.ts`
+  - `apps/desktop/src/renderer/main/pages/settings/dictation/components/FormattingSettings.tsx`
+  - `apps/desktop/src/i18n/locales/*.json`
+  - `apps/desktop/tests/pipeline/formatter-prompt.test.ts`
+- 注意:
+  - 現状確認できた範囲では、desktop 側 formatter（OpenRouter / Ollama）に custom prompt を渡す設計
+  - `Amical Cloud` formatting 側に custom prompt を渡す配線は未確認
+- 今回は保留。優先度を下げて、他の細かい機能追加を先に進める
+
+---
+
+## 関連ブランチ
 
 | ブランチ | 状態 | 内容 |
 |---------|------|------|
-| `main` | push 済み | upstream v1.0.4 + Issue #88 + Escape キャンセル + マイク優先度リスト + クリップボードコピー + 通知非表示 |
-| `feat/intermediate-transcription` | ローカルのみ | 中間文字起こしプレビュー + 沈黙閾値短縮 |
-| `wip/custom-system-prompt` | ローカルのみ | カスタムシステムプロンプト（WIP、型エラーあり） |
+| `main` | push 済み | upstream 取り込み済みの最新作業基点 |
+| `backup-main-before-upstream-sync-20260501` | ローカルのみ | upstream 取り込み前の退避 |
+| `feat/custom-system-prompt` | ローカルのみ | custom-system-prompt の core 実装 |
+| `wip/custom-system-prompt` | ローカルのみ | custom-system-prompt の UI / service WIP |
+| `feature-custom-prompt` | ローカルのみ | merge 後の補助 branch。今回未使用 |
 
 ---
 
-## 既知の課題・注意点
+## 次チャットで最初に決めること
 
-- `pnpm-workspace.yaml` で `apps/www` が除外されている（`!apps/www`）
-- Node.js >= 24 が必要（通常環境より高いバージョン要件）
-- ネイティブビルド（whisper-wrapper）にはプラットフォーム固有の依存がある
-- Apple Silicon では `GGML_NATIVE=OFF pnpm install` が必要（SVE テストがハングするため）
-- 開発モードで Whisper を使うには `pnpm download-node` の実行が必須
-- **開発起動 (`pnpm start`) と本番アプリで DB が分かれる**:
-  - 開発起動時の DB: `apps/desktop/amical.db`
-  - 本番アプリの DB: `~/Library/Application Support/Amical/amical.db`
-  - `pnpm start` で置換ルールや履歴を検証する場合、本番側に入っている vocabulary は自動では見えない
-  - 今回はこの差分で、`神楽 -> CAGRA` の replacement が効かないように見えていた
-  - 開発DBへ本番DBの vocabulary をコピーすると、同じ置換条件で再現確認できる
-- **ログも用途で見分ける**:
-  - 開発起動時のログ: `~/Library/Application Support/Amical/logs/amical-dev.log`
-  - 本番アプリのログ: `~/Library/Logs/Amical/amical.log`
-- DMG ビルドには `SKIP_CODESIGNING=true` が必要（Apple Developer 証明書なしの場合）
-- **ビルド後のアプリでマイク/アクセシビリティ権限が通らない場合**: 自己署名証明書での署名が必要。以下の手順で対処（詳細は `docs/SPECIFICATIONS.md` §9）:
-  ```bash
-  # 1. 署名（証明書 "Amical Dev" は初回のみキーチェーンアクセスで作成）
-  codesign --deep --force -s "Amical Dev" apps/desktop/out/Amical-darwin-arm64/Amical.app
-  # 2. 権限リセット
-  tccutil reset Microphone com.amical.desktop
-  tccutil reset Accessibility com.amical.desktop
-  # 3. インストール
-  rm -rf /Applications/Amical.app
-  cp -R apps/desktop/out/Amical-darwin-arm64/Amical.app /Applications/Amical.app
-  # 4. /Applications/Amical.app を起動 → 権限ダイアログで許可
-  ```
-- **今回の署名トラブルの実原因**:
-  - `app.asar.unpacked` 内に workspace の絶対パスを向く symlink が残ると、トップレベル `.app` の署名が壊れる
-  - 実際には `@amical/whisper-wrapper/node_modules/@amical/typescript-config` の symlink が原因だった
-  - 現在は `forge.config.ts` でコピー済み依存配下の symlink を再帰的に実体化している
-  - package 後に `codesign --verify --deep --strict` で検証してから `/Applications` に入れるのが安全
-- `tests/services/transcriptions.test.ts` が既存バグ（`ServiceManager.createInstance is not a function`）で全件失敗する
-- `useAudioCapture` はウィジェットウィンドウで動作するため、メインウィンドウの設定変更を反映するには tRPC キャッシュのバイパスが必要
+1. `pnpm start` で、最新ビルド相当の動作を手動確認する
+2. 特に以下を確認する
+   - `Ctrl+Escape` ではキャンセルできる
+   - `Escape` ダブルクリックではキャンセルされない
+   - cancel 後に前回 preview が再表示されない
+   - local `1200ms` / cloud `1300ms` の pause 判定が体感上妥当か
+3. 問題なければ `main` を `origin/main` へ push する
 
 ---
 
-## 次のアクション
+## Suggested First Prompt
 
-1. `feat/microphone-priority-list` の最終動作確認 → main にマージ → push
-2. upstream への PR 作成
-3. カスタムプロンプト機能の再開（`wip/custom-system-prompt`）
+```text
+Amical リポジトリの次の小機能追加を進めたいです。現在のブランチは main、HEAD は ebbb1a6 です。origin/main に対して 1 commit ahead です。まず docs/HANDOFF.md と docs/SPECIFICATIONS.md を確認し、現在の検証済み項目、開発DBと本番DBの違い、自己署名アプリ運用の注意点を前提に、次に実装する機能の影響範囲と着手計画を整理してください。custom-system-prompt は今回は保留です。packaging/signing に触れる変更なら codesign --verify --deep --strict を検証に含めてください。
+```

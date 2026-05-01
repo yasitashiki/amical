@@ -20,7 +20,7 @@ export const db = drizzle(`file:${dbPath}`, {
 let isInitialized = false;
 let dbConnection: null | typeof db = null;
 
-import { logger } from "../main/logger";
+import { logger, logPath, runtimeMode } from "../main/logger";
 
 export async function initializeDatabase() {
   if (isInitialized) {
@@ -42,6 +42,16 @@ export async function initializeDatabase() {
       // Production: migrations are copied to resources via extraResource
       migrationsPath = path.join(process.resourcesPath, "migrations");
     }
+
+    logger.db.info("Database runtime paths resolved", {
+      runtimeMode,
+      isPackaged: app.isPackaged,
+      userDataPath: app.getPath("userData"),
+      dbPath,
+      logPath,
+      migrationsPath,
+      cwd: process.cwd(),
+    });
 
     logger.db.debug("Attempting to run migrations from:", migrationsPath);
     logger.db.debug("__dirname:", __dirname);

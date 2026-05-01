@@ -45,7 +45,7 @@ export class ShortcutManager extends EventEmitter {
     pasteLastTranscript: false,
     newNote: false,
   };
-  private escapeWasPressed = false;
+  private ctrlEscapeWasPressed = false;
   private ctrlF9WasPressed = false;
 
   constructor(settingsService: SettingsService, nativeBridge: NativeBridge) {
@@ -230,7 +230,7 @@ export class ShortcutManager extends EventEmitter {
       return;
     }
     this.addActiveKey(keyCode);
-    this.checkShortcuts();
+    this.checkShortcuts(payload, "keyDown");
   }
 
   private handleKeyUp(payload: KeyEventPayload) {
@@ -239,7 +239,7 @@ export class ShortcutManager extends EventEmitter {
       return;
     }
     this.removeActiveKey(keyCode);
-    this.checkShortcuts();
+    this.checkShortcuts(payload, "keyUp");
   }
 
   private addActiveKey(keyCode: number) {
@@ -273,7 +273,10 @@ export class ShortcutManager extends EventEmitter {
     return Array.from(this.activeKeys.keys());
   }
 
-  private checkShortcuts() {
+  private checkShortcuts(
+    payload?: KeyEventPayload,
+    eventType?: "keyDown" | "keyUp",
+  ) {
     // Skip shortcut detection when recording shortcuts
     if (this.isRecordingShortcut) {
       return;
@@ -304,18 +307,27 @@ export class ShortcutManager extends EventEmitter {
     }
     this.exactMatchState.newNote = newNoteMatch;
 
-    // Check Escape key for cancel recording (hardcoded)
+    // Check Ctrl+Escape for cancel recording (hardcoded)
     const escapeKeyCode =
       process.platform === "win32"
         ? WINDOWS_KEYCODES.ESCAPE
         : MAC_KEYCODES.ESCAPE;
     const activeKeysList = this.getActiveKeys();
-    const isEscapePressed =
-      activeKeysList.length === 1 && activeKeysList[0] === escapeKeyCode;
-    if (isEscapePressed && !this.escapeWasPressed) {
+    const controlKeyCodes =
+      process.platform === "win32"
+        ? [WINDOWS_KEYCODES.CTRL, WINDOWS_KEYCODES.RCTRL]
+        : [MAC_KEYCODES.CTRL, MAC_KEYCODES.RCTRL];
+    const isCtrlEscapePressed =
+      eventType === "keyDown" &&
+      payload?.keyCode === escapeKeyCode &&
+      payload.ctrlKey === true &&
+      activeKeysList.length === 2 &&
+      activeKeysList.includes(escapeKeyCode) &&
+      controlKeyCodes.some((keyCode) => activeKeysList.includes(keyCode));
+    if (isCtrlEscapePressed && !this.ctrlEscapeWasPressed) {
       this.emit("cancel-recording-triggered");
     }
-    this.escapeWasPressed = isEscapePressed;
+    this.ctrlEscapeWasPressed = isCtrlEscapePressed;
 
     // Check Ctrl+F9 for toggle recording without clipboard copy (hardcoded)
     const ctrlKeyCode =

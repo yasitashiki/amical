@@ -129,6 +129,12 @@ export const FloatingButton: React.FC = () => {
   const isHandsFreeMode = recordingStatus.mode === "hands-free";
   const isNoteWindowEnabled = noteWindowFeatureFlag.enabled;
 
+  useEffect(() => {
+    if (recordingStatus.state !== "recording") {
+      setIntermediateText("");
+    }
+  }, [recordingStatus.state]);
+
   // Track when recording state changes to "recording" after a click
   useEffect(() => {
     if (recordingStatus.state === "recording" && clickTimeRef.current) {

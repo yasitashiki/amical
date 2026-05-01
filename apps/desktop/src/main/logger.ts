@@ -7,7 +7,9 @@ import path from "node:path";
 import colors from "ansi-colors";
 
 // Configure electron-log immediately when module is imported
-const isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
+export const isDevRuntime =
+  process.env.NODE_ENV === "development" || !app.isPackaged;
+export const runtimeMode = isDevRuntime ? "development" : "packaged";
 
 // Configure main logger - check for LOG_LEVEL override
 const envLogLevel = process.env.LOG_LEVEL as
@@ -22,9 +24,9 @@ const envLogLevel = process.env.LOG_LEVEL as
 const hasDebugScopes = !!process.env.LOG_DEBUG_SCOPES?.trim();
 
 const defaultFileLevel: "debug" | "info" =
-  isDev || hasDebugScopes ? "debug" : "info";
+  isDevRuntime || hasDebugScopes ? "debug" : "info";
 const defaultConsoleLevel: "debug" | "warn" =
-  isDev || hasDebugScopes ? "debug" : "warn";
+  isDevRuntime || hasDebugScopes ? "debug" : "warn";
 
 log.transports.file.level = envLogLevel || defaultFileLevel;
 log.transports.console.level = envLogLevel || defaultConsoleLevel;
@@ -35,14 +37,14 @@ log.transports.file.format =
   "[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] [{scope}] {text}";
 
 // Set custom log file path
-const logPath = isDev
+export const logPath = isDevRuntime
   ? path.join(app.getPath("userData"), "logs", "amical-dev.log")
   : path.join(app.getPath("logs"), "amical.log");
 
 log.transports.file.resolvePathFn = () => logPath;
 
 // Configure console transport for better development experience
-if (isDev) {
+if (isDevRuntime) {
   // Color functions for different scopes using ansi-colors
   const scopeColorFunctions: Record<string, (text: string) => string> = {
     main: colors.blue.bold,
@@ -97,7 +99,7 @@ if (isDev) {
 }
 
 // Configure remote transport for production error reporting (optional)
-if (!isDev) {
+if (!isDevRuntime) {
   // You can configure remote logging here if needed
   // log.transports.remote.level = 'error';
   // log.transports.remote.url = 'your-logging-service-url';
@@ -179,11 +181,15 @@ export const logger = {
 
 // Log startup information
 logger.main.info("Logger initialized", {
-  isDev,
+  isDev: isDevRuntime,
+  runtimeMode,
+  isPackaged: app.isPackaged,
   fileLogLevel: log.transports.file.level,
   consoleLogLevel: log.transports.console.level,
   envLogLevel: envLogLevel || "not set",
   logPath,
+  userDataPath: app.getPath("userData"),
+  cwd: process.cwd(),
   version: app.getVersion(),
   platform: process.platform,
   arch: process.arch,

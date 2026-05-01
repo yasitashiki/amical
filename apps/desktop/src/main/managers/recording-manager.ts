@@ -114,7 +114,7 @@ export class RecordingManager extends EventEmitter {
       await this.pasteLatestTranscription();
     });
 
-    // Handle cancel recording (Escape key)
+    // Handle cancel recording (Ctrl+Escape)
     shortcutManager.on("cancel-recording-triggered", async () => {
       await this.cancelRecording();
     });
@@ -507,6 +507,25 @@ export class RecordingManager extends EventEmitter {
             recordingStartedAt: this.recordingStartedAt || undefined,
           });
 
+        // A cancel/stop may have happened while transcription was in flight.
+        // Drop stale preview text so a previous session cannot leak into the UI.
+        if (
+          this.terminationCode ||
+          this.currentSessionId !== sessionId ||
+          this.recordingState !== "recording"
+        ) {
+          logger.audio.debug(
+            "Dropping stale intermediate transcription after session state changed",
+            {
+              chunkSessionId: sessionId,
+              currentSessionId: this.currentSessionId,
+              recordingState: this.recordingState,
+              terminationCode: this.terminationCode,
+            },
+          );
+          return;
+        }
+
         // Emit intermediate transcription for live preview
         if (intermediateResult) {
           this.emit("intermediate-transcription", intermediateResult);
@@ -676,7 +695,7 @@ export class RecordingManager extends EventEmitter {
   // ═══════════════════════════════════════════════════════════════════
 
   /**
-   * Cancel the current recording (Escape key)
+   * Cancel the current recording (Ctrl+Escape)
    * Discards audio data completely
    */
   public async cancelRecording(): Promise<void> {
