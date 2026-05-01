@@ -7,6 +7,10 @@ import { createRouter, procedure } from "../trpc";
 import { dbPath, closeDatabase } from "../../db";
 import type { AppSettingsData } from "../../db/schema";
 import * as fs from "fs/promises";
+import {
+  HISTORY_RETENTION_PERIODS,
+  DEFAULT_HISTORY_RETENTION_PERIOD,
+} from "../../constants/history-retention";
 
 // FormatterConfig schema
 const FormatterConfigSchema = z.object({
@@ -35,9 +39,15 @@ const OllamaConfigSchema = z.object({
   url: z.string().url().or(z.literal("")),
 });
 
+const OpenAICompatibleConfigSchema = z.object({
+  apiKey: z.string(),
+  baseURL: z.string().url(),
+});
+
 const ModelProvidersConfigSchema = z.object({
   openRouter: OpenRouterConfigSchema.optional(),
   ollama: OllamaConfigSchema.optional(),
+  openAICompatible: OpenAICompatibleConfigSchema.optional(),
 });
 
 const DictationSettingsSchema = z.object({
@@ -59,6 +69,11 @@ const AppPreferencesSchema = z.object({
   muteDictationSounds: z.boolean().optional(),
   autoDictateOnNewNote: z.boolean().optional(),
   copyToClipboard: z.boolean().optional(),
+  preserveClipboard: z.boolean().optional(),
+});
+
+const HistorySettingsSchema = z.object({
+  retentionPeriod: z.enum(HISTORY_RETENTION_PERIODS),
 });
 
 const UIThemeSchema = z.object({
@@ -576,6 +591,33 @@ export const settingsRouter = createRouter({
       }
     }),
 
+  // Set OpenAI-compatible configuration
+  setOpenAICompatibleConfig: procedure
+    .input(OpenAICompatibleConfigSchema)
+    .mutation(async ({ input, ctx }) => {
+      try {
+        const settingsService =
+          ctx.serviceManager.getService("settingsService");
+        if (!settingsService) {
+          throw new Error("SettingsService not available");
+        }
+        await settingsService.setOpenAICompatibleConfig(input);
+
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.info("OpenAI-compatible configuration updated");
+        }
+
+        return true;
+      } catch (error) {
+        const logger = ctx.serviceManager.getLogger();
+        if (logger) {
+          logger.main.error("Error setting OpenAI-compatible config:", error);
+        }
+        throw error;
+      }
+    }),
+
   // Get data path
   getDataPath: procedure.query(() => {
     return app.getPath("userData");
@@ -652,6 +694,36 @@ export const settingsRouter = createRouter({
 
       await settingsService.setPreferences(input);
       // Window updates are handled via settings events in AppManager
+
+      return true;
+    }),
+
+  // Get history settings
+  getHistorySettings: procedure.query(async ({ ctx }) => {
+    const settingsService = ctx.serviceManager.getService("settingsService");
+    if (!settingsService) {
+      throw new Error("SettingsService not available");
+    }
+
+    return await settingsService.getHistorySettings();
+  }),
+
+  // Update history settings
+  updateHistorySettings: procedure
+    .input(HistorySettingsSchema)
+    .mutation(async ({ input, ctx }) => {
+      const settingsService = ctx.serviceManager.getService("settingsService");
+      if (!settingsService) {
+        throw new Error("SettingsService not available");
+      }
+
+      await settingsService.setHistorySettings({
+        retentionPeriod:
+          input.retentionPeriod ?? DEFAULT_HISTORY_RETENTION_PERIOD,
+      });
+
+      const logger = ctx.serviceManager.getLogger();
+      logger?.main.info("History settings updated", input);
 
       return true;
     }),

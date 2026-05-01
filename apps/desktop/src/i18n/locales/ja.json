@@ -426,7 +426,8 @@
           "system": "システム",
           "en": "English",
           "es": "Español",
-          "ja": "日本語"
+          "ja": "日本語",
+          "zh-TW": "繁體中文"
         },
         "restartDialog": {
           "title": "再起動が必要です",
@@ -452,6 +453,10 @@
       "preloadModel": {
         "label": "Whisperモデルをプリロード",
         "description": "起動時にAIモデルを読み込み、文字起こしを高速化"
+      },
+      "preserveClipboard": {
+        "label": "クリップボードの内容を保持",
+        "description": "文字起こしを貼り付けた後、もともとクリップボードにあった内容を復元します。"
       },
       "debugMode": {
         "label": "デバッグモード",
@@ -595,6 +600,9 @@
       },
       "search": {
         "placeholder": "文字起こしを検索..."
+      },
+      "stats": {
+        "wordsDictated": "音声入力した単語数"
       },
       "empty": {
         "searchTitle": "文字起こしが見つかりません",
@@ -824,7 +832,8 @@
       },
       "providers": {
         "openRouter": "OpenRouter",
-        "ollama": "Ollama"
+        "ollama": "Ollama",
+        "openAICompatible": "OpenAI互換"
       },
       "provider": {
         "status": {
@@ -833,7 +842,9 @@
         },
         "placeholders": {
           "openRouter": "APIキー",
-          "ollama": "Ollama URL（例: http://localhost:11434）"
+          "ollama": "Ollama URL（例: http://localhost:11434）",
+          "openAICompatibleApiKey": "APIキー",
+          "openAICompatibleBaseURL": "ベースURL（例: http://localhost:1234/v1）"
         },
         "buttons": {
           "connect": "接続",

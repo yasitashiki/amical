@@ -8,6 +8,11 @@ import {
   updateAppSettings,
 } from "../db/app-settings";
 import type { AppSettingsData } from "../db/schema";
+import {
+  normalizeOllamaUrl,
+  normalizeOpenAICompatibleBaseURL,
+} from "../utils/provider-utils";
+import { DEFAULT_HISTORY_RETENTION_PERIOD } from "../constants/history-retention";
 
 /**
  * Database-backed settings service with typed configuration
@@ -28,6 +33,11 @@ export interface AppPreferences {
   muteDictationSounds: boolean;
   autoDictateOnNewNote: boolean;
   copyToClipboard: boolean;
+  preserveClipboard: boolean;
+}
+
+export interface HistorySettings {
+  retentionPeriod: NonNullable<AppSettingsData["history"]>["retentionPeriod"];
 }
 
 export class SettingsService extends EventEmitter {
@@ -85,10 +95,8 @@ export class SettingsService extends EventEmitter {
   ): Promise<void> {
     await updateSettingsSection("ui", uiSettings);
 
-    // Emit event if theme changed (AppManager will handle window updates)
-    if (uiSettings?.theme !== undefined) {
-      this.emit("theme-changed", { theme: uiSettings.theme });
-    }
+    // AppManager handles window updates when the theme changes.
+    this.emit("theme-changed", { theme: uiSettings.theme });
   }
 
   /**
@@ -229,18 +237,46 @@ export class SettingsService extends EventEmitter {
    */
   async setOllamaConfig(config: { url: string }): Promise<void> {
     const currentConfig = await this.getModelProvidersConfig();
+    const normalizedUrl = normalizeOllamaUrl(config.url);
 
     // If URL is empty, remove the ollama config entirely
-    if (config.url === "") {
+    if (normalizedUrl === "") {
       const updatedConfig = { ...currentConfig };
       delete updatedConfig.ollama;
       await this.setModelProvidersConfig(updatedConfig);
     } else {
       await this.setModelProvidersConfig({
         ...currentConfig,
-        ollama: config,
+        ollama: { url: normalizedUrl },
       });
     }
+  }
+
+  /**
+   * Get OpenAI-compatible configuration
+   */
+  async getOpenAICompatibleConfig(): Promise<
+    { apiKey: string; baseURL: string } | undefined
+  > {
+    const config = await this.getModelProvidersConfig();
+    return config?.openAICompatible;
+  }
+
+  /**
+   * Update OpenAI-compatible configuration
+   */
+  async setOpenAICompatibleConfig(config: {
+    apiKey: string;
+    baseURL: string;
+  }): Promise<void> {
+    const currentConfig = await this.getModelProvidersConfig();
+    await this.setModelProvidersConfig({
+      ...currentConfig,
+      openAICompatible: {
+        apiKey: config.apiKey.trim(),
+        baseURL: normalizeOpenAICompatibleBaseURL(config.baseURL),
+      },
+    });
   }
 
   /**
@@ -314,6 +350,7 @@ export class SettingsService extends EventEmitter {
       muteDictationSounds: preferences?.muteDictationSounds ?? false,
       autoDictateOnNewNote: preferences?.autoDictateOnNewNote ?? false,
       copyToClipboard: preferences?.copyToClipboard ?? false,
+      preserveClipboard: preferences?.preserveClipboard ?? true,
     };
   }
 
@@ -342,6 +379,30 @@ export class SettingsService extends EventEmitter {
         preferences.showWidgetWhileInactive !== undefined,
       showInDockChanged: preferences.showInDock !== undefined,
       muteSystemAudioChanged: preferences.muteSystemAudio !== undefined,
+    });
+  }
+
+  /**
+   * Get history settings
+   */
+  async getHistorySettings(): Promise<HistorySettings> {
+    const history = await getSettingsSection("history");
+    return {
+      retentionPeriod:
+        history?.retentionPeriod ?? DEFAULT_HISTORY_RETENTION_PERIOD,
+    };
+  }
+
+  /**
+   * Update history settings
+   */
+  async setHistorySettings(historySettings: HistorySettings): Promise<void> {
+    const previousSettings = await this.getHistorySettings();
+    await updateSettingsSection("history", historySettings);
+
+    this.emit("history-settings-changed", {
+      previous: previousSettings,
+      current: historySettings,
     });
   }
 
@@ -398,7 +459,9 @@ export class SettingsService extends EventEmitter {
   /**
    * Get telemetry settings
    */
-  async getTelemetrySettings(): Promise<AppSettingsData["telemetry"]> {
+  async getTelemetrySettings(): Promise<
+    NonNullable<AppSettingsData["telemetry"]>
+  > {
     const telemetry = await getSettingsSection("telemetry");
     return telemetry ?? { enabled: true }; // Default to enabled
   }

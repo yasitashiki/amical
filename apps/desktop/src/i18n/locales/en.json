@@ -358,7 +358,7 @@
       },
       "history": {
         "title": "History",
-        "description": "View and manage transcription history"
+        "description": "View and manage dictation history"
       },
       "advanced": {
         "title": "Advanced",
@@ -426,7 +426,8 @@
           "system": "System",
           "en": "English",
           "es": "Español",
-          "ja": "日本語"
+          "ja": "日本語",
+          "zh-TW": "繁體中文"
         },
         "restartDialog": {
           "title": "Restart required",
@@ -453,6 +454,10 @@
         "label": "Preload Whisper Model",
         "description": "Load AI model at startup for faster transcription"
       },
+      "preserveClipboard": {
+        "label": "Preserve clipboard contents",
+        "description": "After pasting a transcript, restore whatever was previously on your clipboard."
+      },
       "debugMode": {
         "label": "Debug Mode",
         "description": "Enable detailed logging"
@@ -467,6 +472,17 @@
         "toast": {
           "updated": "Update channel changed",
           "updateFailed": "Failed to change update channel. Please try again."
+        }
+      },
+      "historyRetention": {
+        "label": "History Retention",
+        "description": "Automatically delete dictation history older than the selected period",
+        "options": {
+          "1d": "Daily",
+          "7d": "7 days",
+          "14d": "14 days",
+          "28d": "28 days",
+          "never": "Never"
         }
       },
       "telemetry": {
@@ -555,7 +571,7 @@
     },
     "history": {
       "title": "History",
-      "description": "Your recent transcription history",
+      "description": "Your recent dictation history",
       "item": {
         "failed": "transcription failed",
         "noWords": "no words detected"
@@ -581,9 +597,20 @@
       "dialog": {
         "title": "Transcription Details"
       },
+      "deleteAll": {
+        "menuItem": "Delete all history",
+        "dialog": {
+          "title": "Delete all dictation history?",
+          "description": "This action cannot be undone. All dictations and their associated audio files will be permanently deleted.",
+          "cancel": "Cancel",
+          "confirm": "Delete all"
+        }
+      },
       "toast": {
         "deleted": "Transcription deleted",
         "deleteFailed": "Failed to delete transcription",
+        "allDeleted": "All dictation history deleted",
+        "allDeleteFailed": "Failed to delete dictation history",
         "downloaded": "Audio file downloaded",
         "downloadFailed": "Failed to download audio file",
         "loadAudioFailed": "Failed to load audio file",
@@ -596,11 +623,14 @@
       "search": {
         "placeholder": "Search transcriptions..."
       },
+      "stats": {
+        "wordsDictated": "Words Dictated"
+      },
       "empty": {
         "searchTitle": "No transcriptions found",
         "searchDescription": "Try adjusting your search terms.",
-        "defaultTitle": "No transcription history yet",
-        "defaultDescription": "Your recent transcriptions will appear here."
+        "defaultTitle": "No dictation history yet",
+        "defaultDescription": "Your recent dictation history will appear here."
       },
       "group": {
         "today": "Today",
@@ -824,7 +854,8 @@
       },
       "providers": {
         "openRouter": "OpenRouter",
-        "ollama": "Ollama"
+        "ollama": "Ollama",
+        "openAICompatible": "OpenAI Compatible"
       },
       "provider": {
         "status": {
@@ -833,7 +864,9 @@
         },
         "placeholders": {
           "openRouter": "API Key",
-          "ollama": "Ollama URL (e.g., http://localhost:11434)"
+          "ollama": "Ollama URL (e.g., http://localhost:11434)",
+          "openAICompatibleApiKey": "API Key",
+          "openAICompatibleBaseURL": "Base URL (e.g., http://localhost:1234/v1)"
         },
         "buttons": {
           "connect": "Connect",

@@ -5,9 +5,11 @@ import {
   integer,
   real,
   index,
+  uniqueIndex,
   primaryKey,
   blob,
 } from "drizzle-orm/sqlite-core";
+import type { HistoryRetentionPeriod } from "../constants/history-retention";
 
 // Transcriptions table
 export const transcriptions = sqliteTable("transcriptions", {
@@ -17,6 +19,7 @@ export const transcriptions = sqliteTable("transcriptions", {
     .notNull()
     .default(sql`(unixepoch())`),
   language: text("language").default("en"),
+  detectedLanguage: text("detected_language"),
   audioFile: text("audio_file"), // Path to the audio file
   confidence: real("confidence"), // AI confidence score (0-1)
   duration: integer("duration"), // Duration in seconds
@@ -68,7 +71,9 @@ export const models = sqliteTable(
   {
     // Identity
     id: text("id").notNull(),
-    provider: text("provider").notNull(), // "local-whisper", "openrouter", "ollama"
+    providerType: text("provider_type").notNull(), // "amical", "local-whisper", "openrouter", "ollama", "openai-compatible"
+    providerInstanceId: text("provider_instance_id").notNull(), // Stable configured instance ID
+    provider: text("provider").notNull(), // Display label
 
     // Common fields
     name: text("name").notNull(),
@@ -99,10 +104,11 @@ export const models = sqliteTable(
       .default(sql`(unixepoch())`),
   },
   (table) => [
-    // Composite primary key on (provider, id)
-    primaryKey({ columns: [table.provider, table.id] }),
+    // Composite primary key on (provider instance, type, id)
+    primaryKey({ columns: [table.providerInstanceId, table.type, table.id] }),
     // Indexes for efficient lookups
-    index("models_provider_idx").on(table.provider),
+    index("models_provider_type_idx").on(table.providerType),
+    index("models_provider_instance_idx").on(table.providerInstanceId),
     index("models_type_idx").on(table.type),
   ],
 );
@@ -111,8 +117,8 @@ export const models = sqliteTable(
 export interface AppSettingsData {
   formatterConfig?: {
     enabled: boolean;
-    modelId?: string; // Formatting model selection (language model ID or "amical-cloud")
-    fallbackModelId?: string; // Last non-cloud formatting model for auto-restore
+    modelId?: string; // Selection key "<providerInstanceId>::<type>::<id>" or legacy raw model ID
+    fallbackModelId?: string; // Last non-cloud formatting selection key or legacy raw model ID
   };
   ui?: {
     theme: "light" | "dark" | "system";
@@ -155,9 +161,13 @@ export interface AppSettingsData {
     ollama?: {
       url: string;
     };
-    defaultSpeechModel?: string; // Model ID for default speech model (Whisper)
-    defaultLanguageModel?: string; // Model ID for default language model
-    defaultEmbeddingModel?: string; // Model ID for default embedding model
+    openAICompatible?: {
+      apiKey: string;
+      baseURL: string;
+    };
+    defaultSpeechModel?: string; // Selection key "<providerInstanceId>::speech::<id>" or legacy speech model ID
+    defaultLanguageModel?: string; // Selection key "<providerInstanceId>::language::<id>" or legacy language model ID
+    defaultEmbeddingModel?: string; // Selection key "<providerInstanceId>::embedding::<id>" or legacy embedding model ID
   };
 
   dictation?: {
@@ -173,6 +183,10 @@ export interface AppSettingsData {
     muteDictationSounds?: boolean;
     autoDictateOnNewNote?: boolean;
     copyToClipboard?: boolean;
+    preserveClipboard?: boolean;
+  };
+  history?: {
+    retentionPeriod: HistoryRetentionPeriod;
   };
   telemetry?: {
     enabled?: boolean;
@@ -211,6 +225,7 @@ export interface AppSettingsData {
   };
   dataMigrations?: {
     notesLexical?: number;
+    dictationDailyStats?: number;
   };
 }
 
@@ -247,6 +262,19 @@ export const yjsUpdates = sqliteTable(
   ],
 );
 
+export const dailyStats = sqliteTable(
+  "daily_stats",
+  {
+    id: text("id").notNull().primaryKey(),
+    date: text("date").notNull(),
+    wordCount: integer("word_count").notNull().default(0),
+    transcriptionCount: integer("transcription_count").notNull().default(0),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [uniqueIndex("daily_stats_date_unique_idx").on(table.date)],
+);
+
 // Export types for TypeScript
 export type Transcription = typeof transcriptions.$inferSelect;
 export type NewTranscription = typeof transcriptions.$inferInsert;
@@ -260,3 +288,5 @@ export type Note = typeof notes.$inferSelect;
 export type NewNote = typeof notes.$inferInsert;
 export type YjsUpdate = typeof yjsUpdates.$inferSelect;
 export type NewYjsUpdate = typeof yjsUpdates.$inferInsert;
+export type DailyStat = typeof dailyStats.$inferSelect;
+export type NewDailyStat = typeof dailyStats.$inferInsert;

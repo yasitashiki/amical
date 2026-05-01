@@ -22,6 +22,20 @@
       "when": 1757500655155,
       "tag": "0002_cheerful_betty_brant",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1774266872355,
+      "tag": "0003_faithful_donald_blake",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1774744286877,
+      "tag": "0004_simple_chronomancer",
+      "breakpoints": true
     }
   ]
 }

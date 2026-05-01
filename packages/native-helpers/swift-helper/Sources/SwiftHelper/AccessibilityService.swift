@@ -447,7 +447,7 @@ class AccessibilityService {
     }
 
     // Pastes the given text into the active application
-    public func pasteText(transcript: String) -> Bool {
+    public func pasteText(transcript: String, preserveClipboard: Bool = true) -> Bool {
         logToStderr("[AccessibilityService] Attempting to paste transcript: \(transcript).")
 
         let pasteboard = NSPasteboard.general
@@ -493,6 +493,12 @@ class AccessibilityService {
         let cmdUp = CGEvent(keyboardEventSource: source, virtualKey: VK_COMMAND, keyDown: false)
         // No flags needed for key up typically, or just .maskCommand if it was held
 
+        // Tag all simulated events so our event tap can skip them and avoid
+        // a feedback loop where the simulated Cmd+V re-triggers the shortcut.
+        for ev in [cmdDown, vDown, vUp, cmdUp] {
+            ev?.setIntegerValueField(.eventSourceUserData, value: SELF_GENERATED_EVENT_TAG)
+        }
+
         if cmdDown == nil || vDown == nil || vUp == nil || cmdUp == nil {
             logToStderr("[AccessibilityService] Failed to create CGEvent for paste.")
             restorePasteboard(
@@ -512,10 +518,14 @@ class AccessibilityService {
 
         // Restore the original pasteboard content after a short delay
         // to allow the paste action to complete.
-        DispatchQueue.main.asyncAfter(deadline: .now() + PASTE_RESTORE_DELAY_SECONDS) {
-            self.restorePasteboard(
-                pasteboard: pasteboard, items: originalPasteboardItems,
-                originalChangeCount: originalChangeCount)
+        if preserveClipboard {
+            DispatchQueue.main.asyncAfter(deadline: .now() + PASTE_RESTORE_DELAY_SECONDS) {
+                self.restorePasteboard(
+                    pasteboard: pasteboard, items: originalPasteboardItems,
+                    originalChangeCount: originalChangeCount)
+            }
+        } else {
+            logToStderr("[AccessibilityService] preserveClipboard=false, skipping pasteboard restoration.")
         }
 
         return true

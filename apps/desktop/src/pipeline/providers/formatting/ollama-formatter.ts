@@ -2,6 +2,8 @@ import { FormattingProvider, FormatParams } from "../../core/pipeline-types";
 import { logger } from "../../../main/logger";
 import { constructFormatterPrompt } from "./formatter-prompt";
 import { extractFormattedText } from "./extract-formatted-text";
+import { normalizeOllamaUrl } from "../../../utils/provider-utils";
+import { getUserAgent } from "../../../utils/http-client";
 
 export class OllamaFormatter implements FormattingProvider {
   readonly name = "ollama";
@@ -9,7 +11,9 @@ export class OllamaFormatter implements FormattingProvider {
   constructor(
     private ollamaUrl: string,
     private model: string,
-  ) {}
+  ) {
+    this.ollamaUrl = normalizeOllamaUrl(ollamaUrl);
+  }
 
   async format(params: FormatParams): Promise<string> {
     try {
@@ -18,28 +22,35 @@ export class OllamaFormatter implements FormattingProvider {
       // Construct the formatter prompt using the same function as OpenRouter
       const { systemPrompt, userPrompt } = constructFormatterPrompt(context);
       const userPromptContent = userPrompt(text);
-
-      logger.pipeline.debug("Formatting request", {
+      const requestPayload = {
+        provider: this.name,
+        endpoint: `${this.ollamaUrl}/api/chat`,
         model: this.model,
-        systemPrompt,
-        userPrompt: userPromptContent,
-      });
+        stream: false,
+        options: {
+          temperature: 0.1,
+          num_predict: 5000,
+        },
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPromptContent },
+        ],
+      };
+
+      logger.pipeline.debug("Formatting LLM request payload", requestPayload);
 
       // Use Ollama's chat endpoint for system/user message structure
-      const response = await fetch(`${this.ollamaUrl}/api/chat`, {
+      const response = await fetch(requestPayload.endpoint, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent": getUserAgent(),
+        },
         body: JSON.stringify({
-          model: this.model,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPromptContent },
-          ],
-          stream: false,
-          options: {
-            temperature: 0.1, // Low temperature for consistent formatting
-            num_predict: 2000,
-          },
+          model: requestPayload.model,
+          messages: requestPayload.messages,
+          stream: requestPayload.stream,
+          options: requestPayload.options,
         }),
       });
 
@@ -50,7 +61,8 @@ export class OllamaFormatter implements FormattingProvider {
       const data = await response.json();
       const aiResponse = data.message?.content ?? "";
 
-      logger.pipeline.debug("Formatting raw response", {
+      logger.pipeline.debug("Formatting LLM raw response", {
+        provider: this.name,
         model: this.model,
         rawResponse: aiResponse,
       });
@@ -63,23 +75,24 @@ export class OllamaFormatter implements FormattingProvider {
           {
             model: this.model,
             reason: extraction.reason,
-            rawResponsePreview: aiResponse.substring(0, 200),
+            rawResponseLength: aiResponse.length,
           },
           "Formatting XML extraction failed, returning original text",
         );
       }
 
-      logger.pipeline.debug("Formatting completed", {
+      logger.pipeline.debug("Formatting LLM parsed response", {
+        provider: this.name,
         original: text,
         formatted: extraction.text,
         usedFallback: extraction.usedFallback,
+        fallbackReason: extraction.reason,
       });
 
       return extraction.text;
     } catch (error) {
       logger.pipeline.error("Formatting failed:", error);
-      // Return original text if formatting fails - simple fallback
-      return params.text;
+      throw error;
     }
   }
 }

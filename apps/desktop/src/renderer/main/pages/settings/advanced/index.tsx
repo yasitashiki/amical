@@ -28,6 +28,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { DEFAULT_HISTORY_RETENTION_PERIOD } from "@/constants/history-retention";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
@@ -35,10 +36,12 @@ import { useTranslation } from "react-i18next";
 export default function AdvancedSettingsPage() {
   const { t } = useTranslation();
   const [preloadWhisperModel, setPreloadWhisperModel] = useState(true);
+  const [preserveClipboard, setPreserveClipboard] = useState(true);
   const [isResetting, setIsResetting] = useState(false);
 
   // tRPC queries and mutations
   const settingsQuery = api.settings.getSettings.useQuery();
+  const preferencesQuery = api.settings.getPreferences.useQuery();
   const telemetryQuery = api.settings.getTelemetrySettings.useQuery();
   const dataPathQuery = api.settings.getDataPath.useQuery();
   const logFilePathQuery = api.settings.getLogFilePath.useQuery();
@@ -56,6 +59,18 @@ export default function AdvancedSettingsPage() {
         toast.error(t("settings.advanced.toast.settingsUpdateFailed"));
       },
     });
+
+  const updatePreferencesMutation = api.settings.updatePreferences.useMutation({
+    onSuccess: () => {
+      utils.settings.getPreferences.invalidate();
+      toast.success(t("settings.advanced.toast.settingsUpdated"));
+    },
+    onError: (error) => {
+      console.error("Failed to update preferences:", error);
+      utils.settings.getPreferences.invalidate();
+      toast.error(t("settings.advanced.toast.settingsUpdateFailed"));
+    },
+  });
 
   const updateTelemetrySettingsMutation =
     api.settings.updateTelemetrySettings.useMutation({
@@ -84,6 +99,18 @@ export default function AdvancedSettingsPage() {
       toast.error(t("settings.advanced.toast.resetFailed"));
     },
   });
+
+  const historySettingsQuery = api.settings.getHistorySettings.useQuery();
+  const updateHistorySettingsMutation =
+    api.settings.updateHistorySettings.useMutation({
+      onSuccess: () => {
+        utils.settings.getHistorySettings.invalidate();
+        toast.success(t("settings.advanced.toast.settingsUpdated"));
+      },
+      onError: () => {
+        toast.error(t("settings.advanced.toast.settingsUpdateFailed"));
+      },
+    });
 
   const updateChannelQuery = api.settings.getUpdateChannel.useQuery();
   const setUpdateChannelMutation = api.settings.setUpdateChannel.useMutation({
@@ -116,10 +143,23 @@ export default function AdvancedSettingsPage() {
     }
   }, [settingsQuery.data]);
 
+  useEffect(() => {
+    if (preferencesQuery.data) {
+      setPreserveClipboard(preferencesQuery.data.preserveClipboard ?? true);
+    }
+  }, [preferencesQuery.data]);
+
   const handlePreloadWhisperModelChange = (checked: boolean) => {
     setPreloadWhisperModel(checked);
     updateTranscriptionSettingsMutation.mutate({
       preloadWhisperModel: checked,
+    });
+  };
+
+  const handlePreserveClipboardChange = (checked: boolean) => {
+    setPreserveClipboard(checked);
+    updatePreferencesMutation.mutate({
+      preserveClipboard: checked,
     });
   };
 
@@ -174,6 +214,22 @@ export default function AdvancedSettingsPage() {
 
           <div className="flex items-center justify-between">
             <div>
+              <Label htmlFor="preserve-clipboard">
+                {t("settings.advanced.preserveClipboard.label")}
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                {t("settings.advanced.preserveClipboard.description")}
+              </p>
+            </div>
+            <Switch
+              id="preserve-clipboard"
+              checked={preserveClipboard}
+              onCheckedChange={handlePreserveClipboardChange}
+            />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
               <Label htmlFor="debug-mode">
                 {t("settings.advanced.debugMode.label")}
               </Label>
@@ -208,6 +264,54 @@ export default function AdvancedSettingsPage() {
                 </SelectItem>
                 <SelectItem value="beta">
                   {t("settings.advanced.updateChannel.options.beta")}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <Label htmlFor="history-retention">
+                {t("settings.advanced.historyRetention.label")}
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                {t("settings.advanced.historyRetention.description")}
+              </p>
+            </div>
+            <Select
+              value={
+                historySettingsQuery.data?.retentionPeriod ??
+                DEFAULT_HISTORY_RETENTION_PERIOD
+              }
+              onValueChange={(value) =>
+                updateHistorySettingsMutation.mutate({
+                  retentionPeriod: value as
+                    | "1d"
+                    | "7d"
+                    | "14d"
+                    | "28d"
+                    | "never",
+                })
+              }
+            >
+              <SelectTrigger className="w-[120px]" id="history-retention">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1d">
+                  {t("settings.advanced.historyRetention.options.1d")}
+                </SelectItem>
+                <SelectItem value="7d">
+                  {t("settings.advanced.historyRetention.options.7d")}
+                </SelectItem>
+                <SelectItem value="14d">
+                  {t("settings.advanced.historyRetention.options.14d")}
+                </SelectItem>
+                <SelectItem value="28d">
+                  {t("settings.advanced.historyRetention.options.28d")}
+                </SelectItem>
+                <SelectItem value="never">
+                  {t("settings.advanced.historyRetention.options.never")}
                 </SelectItem>
               </SelectContent>
             </Select>

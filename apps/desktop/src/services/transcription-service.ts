@@ -8,8 +8,8 @@ import {
 import { createDefaultContext } from "../pipeline/core/context";
 import { WhisperProvider } from "../pipeline/providers/transcription/whisper-provider";
 import { AmicalCloudProvider } from "../pipeline/providers/transcription/amical-cloud-provider";
-import { OpenRouterProvider } from "../pipeline/providers/formatting/openrouter-formatter";
-import { OllamaFormatter } from "../pipeline/providers/formatting/ollama-formatter";
+import { createRemoteFormattingProvider } from "../pipeline/providers/formatting/remote-formatting-provider-registry";
+import type { RemoteFormattingProviderType } from "../pipeline/providers/formatting/remote-formatting-provider-registry";
 import { ModelService } from "../services/model-service";
 import { SettingsService } from "../services/settings-service";
 import { TelemetryService } from "../services/telemetry-service";
@@ -20,6 +20,7 @@ import {
   getTranscriptionById,
   updateTranscription,
 } from "../db/transcriptions";
+import { incrementDailyStats } from "../db/daily-stats";
 import { getVocabulary } from "../db/vocabulary";
 import { logger } from "../main/logger";
 import { v4 as uuid } from "uuid";
@@ -30,6 +31,14 @@ import { AVAILABLE_MODELS } from "../constants/models";
 import { AppError, ErrorCodes } from "../types/error";
 import { applyTextReplacements } from "../utils/text-replacement";
 import * as fs from "node:fs";
+import { PROVIDER_TYPES } from "../constants/provider-types";
+import {
+  findModelBySelectionValue,
+  getModelSelectionKey,
+  getSpeechModelSelectionKey,
+  isAmicalCloudSelectionValue,
+} from "../utils/model-selection";
+import { countWords } from "../utils/dictation-stats";
 
 /**
  * Service for audio transcription and optional formatting
@@ -314,7 +323,7 @@ export class TranscriptionService {
       const provider = await this.selectProvider();
 
       // Transcribe chunk (flush is done separately in finalizeSession)
-      const chunkTranscription = await provider.transcribe({
+      const chunkResult = await provider.transcribe({
         audioData: audioChunk,
         speechProbability: speechProbability,
         context: {
@@ -326,18 +335,22 @@ export class TranscriptionService {
           language: session.context.sharedData.userPreferences?.language,
         },
       });
+      session.detectedLanguage = this.mergeDetectedLanguage(
+        session.detectedLanguage,
+        chunkResult.detectedLanguage,
+      );
 
       // Accumulate the result only if Whisper returned something
       // (it returns empty string while buffering)
       this.accumulateTranscriptionResult(
         session.transcriptionResults,
-        chunkTranscription,
+        chunkResult.text,
         provider.name === "amical-cloud",
       );
-      if (chunkTranscription.trim()) {
+      if (chunkResult.text.trim()) {
         logger.transcription.info("Whisper returned transcription", {
           sessionId,
-          transcriptionLength: chunkTranscription.length,
+          transcriptionLength: chunkResult.text.length,
           totalResults: session.transcriptionResults.length,
         });
       }
@@ -345,7 +358,7 @@ export class TranscriptionService {
       logger.transcription.debug("Processed frame", {
         sessionId,
         frameSize: audioChunk.length,
-        hadTranscription: chunkTranscription.length > 0,
+        hadTranscription: chunkResult.text.length > 0,
       });
     } finally {
       // Release transcription mutex - always release even on error
@@ -404,7 +417,8 @@ export class TranscriptionService {
 
       const formatterConfig = await this.settingsService.getFormatterConfig();
       const shouldUseCloudFormatting =
-        formatterConfig?.enabled && formatterConfig.modelId === "amical-cloud";
+        formatterConfig?.enabled &&
+        isAmicalCloudSelectionValue(formatterConfig.modelId);
       let usedCloudProvider = false;
 
       // Flush provider to get any remaining buffered audio
@@ -420,7 +434,7 @@ export class TranscriptionService {
 
         const provider = await this.selectProvider();
         usedCloudProvider = provider.name === "amical-cloud";
-        const finalTranscription = await provider.flush({
+        const finalResult = await provider.flush({
           sessionId,
           vocabulary: session.context.sharedData.vocabulary,
           accessibilityContext: session.context.sharedData.accessibilityContext,
@@ -429,16 +443,20 @@ export class TranscriptionService {
           language: session.context.sharedData.userPreferences?.language,
           formattingEnabled: shouldUseCloudFormatting && usedCloudProvider,
         });
+        session.detectedLanguage = this.mergeDetectedLanguage(
+          session.detectedLanguage,
+          finalResult.detectedLanguage,
+        );
 
         this.accumulateTranscriptionResult(
           session.transcriptionResults,
-          finalTranscription,
+          finalResult.text,
           usedCloudProvider,
         );
-        if (finalTranscription.trim()) {
+        if (finalResult.text.trim()) {
           logger.transcription.info("Whisper returned final transcription", {
             sessionId,
-            transcriptionLength: finalTranscription.length,
+            transcriptionLength: finalResult.text.length,
             totalResults: session.transcriptionResults.length,
           });
         }
@@ -446,27 +464,33 @@ export class TranscriptionService {
         this.transcriptionMutex.release();
       }
 
-      let completeTranscription = session.transcriptionResults.join("");
+      let rawTranscription = session.transcriptionResults.join("");
 
       // Apply simple pre-formatting for local models (handles Whisper leading space artifact)
       if (!usedCloudProvider) {
         const preSelectionText =
           session.context.sharedData.accessibilityContext?.context
             ?.textSelection?.preSelectionText;
-        completeTranscription = this.preFormatLocalTranscription(
-          completeTranscription,
+        rawTranscription = this.preFormatLocalTranscription(
+          rawTranscription,
           preSelectionText,
         );
       }
 
       logger.transcription.info("Finalizing streaming session", {
         sessionId,
-        rawTranscriptionLength: completeTranscription.length,
+        rawTranscriptionLength: rawTranscription.length,
         chunkCount: session.transcriptionResults.length,
       });
 
+      const requestedLanguage =
+        session.context.sharedData.userPreferences?.language || "auto";
+      const detectedLanguage = this.sanitizeDetectedLanguage(
+        session.detectedLanguage,
+      );
+
       const formatResult = await this.applyFormattingAndReplacements({
-        text: completeTranscription,
+        text: rawTranscription,
         usedCloudProvider,
         vocabulary: session.context.sharedData.vocabulary,
         accessibilityContext: session.context.sharedData.accessibilityContext,
@@ -474,7 +498,11 @@ export class TranscriptionService {
         formattingStyle:
           session.context.sharedData.userPreferences?.formattingStyle,
       });
-      completeTranscription = formatResult.text;
+      const completeTranscription = formatResult.text;
+      const transcriptionWordCount = countWords(
+        formatResult.textBeforeReplacements,
+        detectedLanguage ?? requestedLanguage,
+      );
       const formattingUsed = formatResult.formattingUsed;
       const formattingModel = formatResult.formattingModel;
       const formattingDuration = formatResult.formattingDuration;
@@ -493,8 +521,8 @@ export class TranscriptionService {
 
       await createTranscription({
         text: completeTranscription,
-        language:
-          session.context.sharedData.userPreferences?.language || "auto",
+        language: requestedLanguage,
+        detectedLanguage,
         duration: session.context.sharedData.audioMetadata?.duration,
         speechModel: speechModelId,
         formattingModel,
@@ -507,6 +535,15 @@ export class TranscriptionService {
             session.context.sharedData.userPreferences?.formattingStyle,
         },
       });
+
+      try {
+        await incrementDailyStats(transcriptionWordCount);
+      } catch (error) {
+        logger.transcription.error("Failed to increment dictation stats", {
+          sessionId,
+          error,
+        });
+      }
 
       // Track transcription completion
       const completionTime = performance.now();
@@ -554,13 +591,12 @@ export class TranscriptionService {
             ? audioDurationSeconds / (totalDuration / 1000)
             : undefined,
         text_length: completeTranscription.length,
-        word_count: completeTranscription.trim().split(/\s+/).length,
+        word_count: transcriptionWordCount,
         formatting_enabled: formattingUsed,
         formatting_model: formattingModel,
         formatting_duration_ms: formattingDuration,
         vad_enabled: !!this.vadService,
-        language:
-          session.context.sharedData.userPreferences?.language || "auto",
+        language: requestedLanguage,
         vocabulary_size: session.context.sharedData.vocabulary?.length || 0,
       });
 
@@ -578,6 +614,11 @@ export class TranscriptionService {
       await createTranscription({
         text: "",
         audioFile: audioFilePath || undefined,
+        language:
+          session.context.sharedData.userPreferences?.language || "auto",
+        detectedLanguage: this.sanitizeDetectedLanguage(
+          session.detectedLanguage,
+        ),
         meta: {
           sessionId,
           status: "failed",
@@ -590,6 +631,20 @@ export class TranscriptionService {
         errorCode,
         audioFilePath,
       });
+
+      try {
+        // Failed rows still appear in History, so they intentionally contribute
+        // to totalTranscriptions even though they add zero dictated words.
+        await incrementDailyStats(0);
+      } catch (statsError) {
+        logger.transcription.error(
+          "Failed to increment failed dictation stats",
+          {
+            sessionId,
+            error: statsError,
+          },
+        );
+      }
 
       // Clean up session
       this.streamingSessions.delete(sessionId);
@@ -703,6 +758,7 @@ export class TranscriptionService {
     formattingStyle?: string;
   }): Promise<{
     text: string;
+    textBeforeReplacements: string;
     formattingUsed: boolean;
     formattingModel?: string;
     formattingDuration?: number;
@@ -718,14 +774,14 @@ export class TranscriptionService {
       logger.transcription.debug("Formatting skipped: disabled in config");
     } else if (!text.trim().length) {
       logger.transcription.debug("Formatting skipped: empty transcription");
-    } else if (formatterConfig.modelId === "amical-cloud") {
+    } else if (isAmicalCloudSelectionValue(formatterConfig.modelId)) {
       if (!options.usedCloudProvider) {
         logger.transcription.warn(
           "Formatting skipped: Amical Cloud formatting requires cloud transcription",
         );
       } else {
         formattingUsed = true;
-        formattingModel = "amical-cloud";
+        formattingModel = getSpeechModelSelectionKey("amical-cloud");
       }
     } else {
       const modelId =
@@ -737,26 +793,34 @@ export class TranscriptionService {
         );
       } else {
         const allModels = await this.modelService.getSyncedProviderModels();
-        const model = allModels.find(
-          (m) => m.id === modelId && m.type === "language",
+        const model = findModelBySelectionValue(
+          allModels.filter((entry) => entry.type === "language"),
+          modelId,
         );
 
         if (!model) {
           logger.transcription.warn("Formatting skipped: model not found", {
             modelId,
           });
-        } else if (model.provider === "OpenRouter") {
-          const config = await this.settingsService.getOpenRouterConfig();
-          if (!config?.apiKey) {
+        } else if (model.providerType !== PROVIDER_TYPES.localWhisper) {
+          const provider = await createRemoteFormattingProvider(
+            this.settingsService,
+            model.providerType as RemoteFormattingProviderType,
+            model.id,
+          );
+
+          if (!provider) {
             logger.transcription.warn(
-              "Formatting skipped: OpenRouter API key missing",
+              "Formatting skipped: provider config missing",
+              {
+                provider: model.provider,
+              },
             );
           } else {
             logger.transcription.info("Starting formatting", {
               provider: model.provider,
-              model: modelId,
+              model: model.id,
             });
-            const provider = new OpenRouterProvider(config.apiKey, modelId);
             const result = await this.formatWithProvider(provider, text, {
               style: options.formattingStyle,
               vocabulary: options.vocabulary,
@@ -766,29 +830,11 @@ export class TranscriptionService {
               text = result.text;
               formattingDuration = result.duration;
               formattingUsed = true;
-              formattingModel = modelId;
-            }
-          }
-        } else if (model.provider === "Ollama") {
-          const config = await this.settingsService.getOllamaConfig();
-          if (!config?.url) {
-            logger.transcription.warn("Formatting skipped: Ollama URL missing");
-          } else {
-            logger.transcription.info("Starting formatting", {
-              provider: model.provider,
-              model: modelId,
-            });
-            const provider = new OllamaFormatter(config.url, modelId);
-            const result = await this.formatWithProvider(provider, text, {
-              style: options.formattingStyle,
-              vocabulary: options.vocabulary,
-              accessibilityContext: options.accessibilityContext,
-            });
-            if (result) {
-              text = result.text;
-              formattingDuration = result.duration;
-              formattingUsed = true;
-              formattingModel = modelId;
+              formattingModel = getModelSelectionKey(
+                model.providerInstanceId,
+                model.type,
+                model.id,
+              );
             }
           }
         } else {
@@ -799,6 +845,8 @@ export class TranscriptionService {
         }
       }
     }
+
+    const textBeforeReplacements = text;
 
     // Apply vocabulary replacements (final post-processing step)
     if (options.replacements.size > 0) {
@@ -813,7 +861,13 @@ export class TranscriptionService {
       }
     }
 
-    return { text, formattingUsed, formattingModel, formattingDuration };
+    return {
+      text,
+      textBeforeReplacements,
+      formattingUsed,
+      formattingModel,
+      formattingDuration,
+    };
   }
 
   /**
@@ -874,7 +928,8 @@ export class TranscriptionService {
     const selectedModelId = await this.modelService.getSelectedModel();
     const formatterConfig = await this.settingsService.getFormatterConfig();
     const shouldUseCloudFormatting =
-      formatterConfig?.enabled && formatterConfig.modelId === "amical-cloud";
+      formatterConfig?.enabled &&
+      isAmicalCloudSelectionValue(formatterConfig.modelId);
 
     // Split audio into 512-sample frames for per-frame VAD
     const FRAME_SIZE = 512;
@@ -912,6 +967,9 @@ export class TranscriptionService {
 
     // Transcribe using current provider settings
     const transcriptionResults: string[] = [];
+    let detectedLanguage = this.sanitizeDetectedLanguage(
+      record.detectedLanguage,
+    );
     let usedCloudProvider = false;
 
     await this.transcriptionMutex.acquire();
@@ -928,7 +986,7 @@ export class TranscriptionService {
             : undefined;
         const aggregatedTranscription = transcriptionResults.join("");
 
-        const chunkTranscription = await provider.transcribe({
+        const chunkResult = await provider.transcribe({
           audioData: frames[i],
           speechProbability: vadProbs[i],
           context: {
@@ -939,27 +997,35 @@ export class TranscriptionService {
             aggregatedTranscription: aggregatedTranscription || undefined,
           },
         });
+        detectedLanguage = this.mergeDetectedLanguage(
+          detectedLanguage,
+          chunkResult.detectedLanguage,
+        );
 
         this.accumulateTranscriptionResult(
           transcriptionResults,
-          chunkTranscription,
+          chunkResult.text,
           usedCloudProvider,
         );
       }
 
       // Flush to get remaining buffered audio
       const aggregatedTranscription = transcriptionResults.join("");
-      const finalTranscription = await provider.flush({
+      const finalResult = await provider.flush({
         sessionId: retrySessionId,
         vocabulary,
         language,
         aggregatedTranscription: aggregatedTranscription || undefined,
         formattingEnabled: shouldUseCloudFormatting && usedCloudProvider,
       });
+      detectedLanguage = this.mergeDetectedLanguage(
+        detectedLanguage,
+        finalResult.detectedLanguage,
+      );
 
       this.accumulateTranscriptionResult(
         transcriptionResults,
-        finalTranscription,
+        finalResult.text,
         usedCloudProvider,
       );
     } finally {
@@ -987,10 +1053,19 @@ export class TranscriptionService {
     const speechModelId = usedCloudProvider
       ? "amical-cloud"
       : selectedModelId || "whisper-local";
+    const previousWordCount = countWords(
+      record.text,
+      record.detectedLanguage ?? record.language,
+    );
+    const nextWordCount = countWords(
+      formatResult.textBeforeReplacements,
+      detectedLanguage ?? language,
+    );
 
     // Update the existing record in-place
     await updateTranscription(transcriptionId, {
       text: formatResult.text,
+      detectedLanguage: this.sanitizeDetectedLanguage(detectedLanguage),
       speechModel: speechModelId,
       formattingModel: formatResult.formattingModel,
       meta: {
@@ -1001,6 +1076,23 @@ export class TranscriptionService {
         retriedAt: new Date().toISOString(),
       },
     });
+
+    // Retries only upgrade a previously empty history row into its first
+    // successful counted transcription. We intentionally do not rebalance
+    // lifetime stats for already-counted rows when a retry changes the text.
+    if (previousWordCount === 0 && nextWordCount > 0) {
+      try {
+        await incrementDailyStats(nextWordCount, new Date(), 0);
+      } catch (error) {
+        logger.transcription.error(
+          "Failed to increment retry dictation stats",
+          {
+            transcriptionId,
+            error,
+          },
+        );
+      }
+    }
 
     const processingDuration = performance.now() - retryStartedAt;
     const audioDurationSeconds = audioData.length / 16000;
@@ -1017,7 +1109,7 @@ export class TranscriptionService {
           ? audioDurationSeconds / (processingDuration / 1000)
           : undefined,
       text_length: formatResult.text.length,
-      word_count: formatResult.text.trim().split(/\s+/).length,
+      word_count: nextWordCount,
       formatting_enabled: formatResult.formattingUsed,
       formatting_model: formatResult.formattingModel,
       formatting_duration_ms: formatResult.formattingDuration,
@@ -1051,6 +1143,23 @@ export class TranscriptionService {
       results.length = 0;
     }
     results.push(newText);
+  }
+
+  private sanitizeDetectedLanguage(
+    detectedLanguage?: string | null,
+  ): string | undefined {
+    const trimmed = detectedLanguage?.trim();
+    return trimmed ? trimmed : undefined;
+  }
+
+  private mergeDetectedLanguage(
+    currentLanguage?: string,
+    nextLanguage?: string,
+  ): string | undefined {
+    return (
+      this.sanitizeDetectedLanguage(nextLanguage) ??
+      this.sanitizeDetectedLanguage(currentLanguage)
+    );
   }
 
   /**

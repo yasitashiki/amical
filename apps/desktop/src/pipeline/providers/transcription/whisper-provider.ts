@@ -2,6 +2,7 @@ import {
   TranscriptionProvider,
   TranscribeParams,
   TranscribeContext,
+  TranscriptionOutput,
 } from "../../core/pipeline-types";
 import { logger } from "../../../main/logger";
 import { ModelService } from "../../../services/model-service";
@@ -78,7 +79,7 @@ export class WhisperProvider implements TranscriptionProvider {
   /**
    * Process an audio chunk - buffers and conditionally transcribes
    */
-  async transcribe(params: TranscribeParams): Promise<string> {
+  async transcribe(params: TranscribeParams): Promise<TranscriptionOutput> {
     await this.initializeWhisper();
 
     const { audioData, speechProbability = 1, context } = params;
@@ -103,7 +104,7 @@ export class WhisperProvider implements TranscriptionProvider {
 
     // Only transcribe if speech/silence patterns indicate we should
     if (!this.shouldTranscribe()) {
-      return "";
+      return { text: "" };
     }
 
     return this.doTranscription(context);
@@ -113,9 +114,9 @@ export class WhisperProvider implements TranscriptionProvider {
    * Flush any buffered audio and return transcription
    * Called at the end of a recording session
    */
-  async flush(context: TranscribeContext): Promise<string> {
+  async flush(context: TranscribeContext): Promise<TranscriptionOutput> {
     if (this.frameBuffer.length === 0) {
-      return "";
+      return { text: "" };
     }
 
     await this.initializeWhisper();
@@ -126,7 +127,9 @@ export class WhisperProvider implements TranscriptionProvider {
    * Shared transcription logic - aggregates buffer, calls whisper, clears state
    * Assumes initializeWhisper() was already called by caller
    */
-  private async doTranscription(context: TranscribeContext): Promise<string> {
+  private async doTranscription(
+    context: TranscribeContext,
+  ): Promise<TranscriptionOutput> {
     try {
       const { aggregatedTranscription, language } = context;
 
@@ -147,7 +150,7 @@ export class WhisperProvider implements TranscriptionProvider {
         logger.transcription.debug(
           "Skipping transcription - no speech detected by VAD filter",
         );
-        return "";
+        return { text: "" };
       }
 
       logger.transcription.debug(
@@ -172,22 +175,26 @@ export class WhisperProvider implements TranscriptionProvider {
         language,
       );
 
-      const text = await this.workerWrapper.exec<string>("transcribeAudio", [
-        aggregatedAudio,
-        {
-          language: language || "auto",
-          initial_prompt: initialPrompt,
-          suppress_blank: true,
-          suppress_non_speech_tokens: true,
-          no_timestamps: false,
-        },
-      ]);
-
-      logger.transcription.debug(
-        `Transcription completed, length: ${text.length}`,
+      const result = await this.workerWrapper.exec<TranscriptionOutput>(
+        "transcribeAudio",
+        [
+          aggregatedAudio,
+          {
+            language: language || "auto",
+            initial_prompt: initialPrompt,
+            suppress_blank: true,
+            suppress_non_speech_tokens: true,
+            no_timestamps: false,
+            format: "detail",
+          },
+        ],
       );
 
-      return text;
+      logger.transcription.debug(
+        `Transcription completed, length: ${result.text.length}`,
+      );
+
+      return result;
     } catch (error) {
       logger.transcription.error("Transcription failed:", error);
       // Re-throw AppError as-is, wrap other errors
