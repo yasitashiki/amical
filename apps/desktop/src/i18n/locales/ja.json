@@ -669,6 +669,10 @@
         "cloudReady": "Amical Cloudフォーマットを使用中。",
         "noLanguageModels": "フォーマットは実行されません - 言語モデルがありません。",
         "syncLanguageModels": "言語モデルを同期",
+        "customPromptLabel": "カスタム指示",
+        "customPromptDescription": "ビルトインのフォーマットプロンプトに追加指示を追記します。",
+        "customPromptPlaceholder": "例: 結果を簡潔な箇条書きに変換してください。",
+        "customPromptCharCount": "{{count}} / {{max}}文字",
         "toast": {
           "saveFailed": "フォーマット設定の保存に失敗しました。もう一度お試しください。",
           "loginInBrowser": "ブラウザでログインを完了してください",

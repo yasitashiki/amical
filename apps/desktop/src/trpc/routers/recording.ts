@@ -18,6 +18,7 @@ import { ErrorCodes, type ErrorCode } from "../../types/error";
 interface RecordingStateUpdate {
   state: RecordingState;
   mode: RecordingMode;
+  customPromptActive: boolean;
 }
 
 export const recordingRouter = createRouter({
@@ -55,6 +56,7 @@ export const recordingRouter = createRouter({
       emit.next({
         state: recordingManager.getState(),
         mode: recordingManager.getRecordingMode(),
+        customPromptActive: recordingManager.getCustomPromptActive(),
       });
 
       // Set up listener for state changes
@@ -62,6 +64,7 @@ export const recordingRouter = createRouter({
         emit.next({
           state: status,
           mode: recordingManager.getRecordingMode(),
+          customPromptActive: recordingManager.getCustomPromptActive(),
         });
       };
 
@@ -69,6 +72,7 @@ export const recordingRouter = createRouter({
         emit.next({
           state: recordingManager.getState(),
           mode,
+          customPromptActive: recordingManager.getCustomPromptActive(),
         });
       };
 

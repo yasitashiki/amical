@@ -39,6 +39,8 @@ export interface FormatParams {
     accessibilityContext?: GetAccessibilityContextResult | null;
     previousChunk?: string;
     aggregatedTranscription?: string;
+    customSystemPrompt?: string;
+    customPromptMode?: "replace";
   };
 }
 

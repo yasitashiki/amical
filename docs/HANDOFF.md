@@ -140,19 +140,21 @@
 
 ## custom-system-prompt メモ
 
-- `custom-system-prompt` は **main に未マージ**
+- `custom-system-prompt` は **main に実装済み**
 - 関連ブランチ:
   - `feat/custom-system-prompt`
   - `wip/custom-system-prompt`
   - `feature-custom-prompt`（存在はするが今回未使用）
 - 状態:
-  - `feat/custom-system-prompt` には core 実装がある
-    - `FormatterConfig` への field 追加
-    - `formatter-prompt.ts` への `## Additional Instructions` 差し込み
-    - prompt 単体テスト
-  - `wip/custom-system-prompt` には UI / i18n / service 層の途中実装がある
-- ただし、これらの branch は upstream 取り込み前の前提で書かれており、そのまま復活させるのは危険
-- 再開するなら、**現行 `main` に最小差分で載せ直す** 方針が安全
+  - `FormatterConfig` / DB schema / settings schema に `customSystemPrompt` を追加済み
+  - settings UI から custom prompt を保存できる
+  - `Cmd + Ctrl + <録音ショートカット>` で custom prompt セッションを開始できる
+  - 通常録音では formatter を実行せず、custom 録音時のみ formatter を実行する
+  - custom 録音時は built-in formatter prompt を bypass し、custom prompt を主 instruction として使う
+  - widget は custom prompt セッション中のみ青系 UI に切り替わる
+  - formatter prompt / service / shortcut utility のテストを追加済み
+- 実装方針:
+  - 旧 branch を戻すのではなく、現行 `main` に最小差分で載せ直した
 - 想定対象ファイル:
   - `apps/desktop/src/types/formatter.ts`
   - `apps/desktop/src/db/schema.ts`
@@ -163,11 +165,34 @@
   - `apps/desktop/src/renderer/main/pages/settings/dictation/hooks/use-formatting-settings.ts`
   - `apps/desktop/src/renderer/main/pages/settings/dictation/components/FormattingSettings.tsx`
   - `apps/desktop/src/i18n/locales/*.json`
+  - `apps/desktop/src/main/managers/shortcut-manager.ts`
+  - `apps/desktop/src/main/managers/recording-manager.ts`
+  - `apps/desktop/src/trpc/routers/recording.ts`
+  - `apps/desktop/src/hooks/useRecording.ts`
+  - `apps/desktop/src/renderer/widget/pages/widget/components/FloatingButton.tsx`
+  - `apps/desktop/src/utils/custom-prompt.ts`
+  - `apps/desktop/src/utils/hardcoded-shortcuts.ts`
   - `apps/desktop/tests/pipeline/formatter-prompt.test.ts`
+  - `apps/desktop/tests/services/transcription-service-custom-prompt.test.ts`
+  - `apps/desktop/tests/utils/custom-prompt.test.ts`
+  - `apps/desktop/tests/utils/hardcoded-shortcuts.test.ts`
 - 注意:
-  - 現状確認できた範囲では、desktop 側 formatter（OpenRouter / Ollama）に custom prompt を渡す設計
-  - `Amical Cloud` formatting 側に custom prompt を渡す配線は未確認
-- 今回は保留。優先度を下げて、他の細かい機能追加を先に進める
+  - custom prompt の適用対象は custom 録音セッションのみ
+  - 通常録音は formatting toggle が ON でも整形しない
+  - custom 録音時の formatter provider は settings の `formatterConfig.modelId` に従う
+  - OpenAI API 利用は `OpenAI Compatible` 設定とモデル選択に依存するローカル設定であり、commit 差分には含まれない
+  - `Amical Cloud` formatting payload への custom prompt 受け渡しは今回未対応
+
+### 検証メモ
+
+- 手動確認:
+  - custom prompt UI で保存できる
+  - `Cmd + Ctrl + F9` で custom prompt モード録音に入れる
+  - custom prompt モード中は widget が青くなる
+  - custom prompt モード録音で OpenAI formatter を使った変換が通る
+- 自動テスト:
+  - `npx vitest run apps/desktop/tests/pipeline/formatter-prompt.test.ts apps/desktop/tests/services/transcription-service-custom-prompt.test.ts apps/desktop/tests/utils/custom-prompt.test.ts apps/desktop/tests/utils/hardcoded-shortcuts.test.ts`
+  - `npx tsc -p apps/desktop/tsconfig.json --noEmit`
 
 ---
 
@@ -185,18 +210,14 @@
 
 ## 次チャットで最初に決めること
 
-1. `pnpm start` で、最新ビルド相当の動作を手動確認する
-2. 特に以下を確認する
-   - `Ctrl+Escape` ではキャンセルできる
-   - `Escape` ダブルクリックではキャンセルされない
-   - cancel 後に前回 preview が再表示されない
-   - local `1200ms` / cloud `1300ms` の pause 判定が体感上妥当か
-3. 問題なければ `main` を `origin/main` へ push する
+1. custom prompt 用 settings copy を整える
+2. `OpenAI Compatible` 前提の運用を docs 化するか決める
+3. `Amical Cloud` formatting payload に custom prompt を渡すか判断する
 
 ---
 
 ## Suggested First Prompt
 
 ```text
-Amical リポジトリの次の小機能追加を進めたいです。現在のブランチは main、HEAD は ebbb1a6 です。origin/main に対して 1 commit ahead です。まず docs/HANDOFF.md と docs/SPECIFICATIONS.md を確認し、現在の検証済み項目、開発DBと本番DBの違い、自己署名アプリ運用の注意点を前提に、次に実装する機能の影響範囲と着手計画を整理してください。custom-system-prompt は今回は保留です。packaging/signing に触れる変更なら codesign --verify --deep --strict を検証に含めてください。
+Amical リポジトリで custom prompt 機能の次の改善を進めたいです。まず docs/HANDOFF.md と apps/desktop 周辺の current implementation を確認し、custom prompt 録音専用 formatter の現状、OpenAI Compatible 前提の運用差分、Amical Cloud 未対応部分を整理したうえで、次に進めるべき小さな改善案を 2-3 個に絞ってください。
 ```

@@ -8,7 +8,10 @@ import { NOTE_WINDOW_FEATURE_FLAG } from "@/utils/feature-flags";
 import { useTranslation } from "react-i18next";
 
 // Intermediate transcription preview below the widget
-const IntermediateTranscription: React.FC<{ text: string }> = ({ text }) => {
+const IntermediateTranscription: React.FC<{
+  text: string;
+  customPromptActive?: boolean;
+}> = ({ text, customPromptActive = false }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -22,7 +25,11 @@ const IntermediateTranscription: React.FC<{ text: string }> = ({ text }) => {
   return (
     <div
       ref={scrollRef}
-      className="mt-1 max-w-[400px] max-h-[120px] overflow-y-auto rounded-lg bg-black/70 backdrop-blur-md px-3 py-2 text-xs text-white/90 leading-relaxed ring-[1px] ring-black/60"
+      className={`mt-1 max-w-[400px] max-h-[120px] overflow-y-auto rounded-lg backdrop-blur-md px-3 py-2 text-xs text-white/90 leading-relaxed ring-[1px] ${
+        customPromptActive
+          ? "bg-sky-900/70 ring-sky-500/40"
+          : "bg-black/70 ring-black/60"
+      }`}
     >
       {text}
     </div>
@@ -115,6 +122,9 @@ export const FloatingButton: React.FC = () => {
   const isRecording =
     recordingStatus.state === "recording" ||
     recordingStatus.state === "starting";
+  const isCustomPromptSession =
+    recordingStatus.customPromptActive &&
+    (isRecording || recordingStatus.state === "stopping");
 
   // Subscribe to intermediate transcription updates
   api.recording.intermediateTranscription.useSubscription(undefined, {
@@ -233,6 +243,9 @@ export const FloatingButton: React.FC = () => {
     : showNotesAction
       ? "h-[24px] w-[124px]"
       : "h-[24px] w-[96px]";
+  const widgetToneClass = isCustomPromptSession
+    ? "bg-sky-900/70 ring-sky-500/40 shadow-[0px_0px_15px_0px_rgba(14,116,144,0.35)] before:outline-sky-300/25"
+    : "bg-black/70 ring-black/60 shadow-[0px_0px_15px_0px_rgba(0,0,0,0.40)] before:outline-white/15";
 
   // Function to render widget content based on state
   const renderWidgetContent = () => {
@@ -296,8 +309,9 @@ export const FloatingButton: React.FC = () => {
         className={`
           transition-all duration-200 ease-in-out
           ${sizeClass}
-          bg-black/70 rounded-[24px] backdrop-blur-md ring-[1px] ring-black/60 shadow-[0px_0px_15px_0px_rgba(0,0,0,0.40)]
-          before:content-[''] before:absolute before:inset-[1px] before:rounded-[23px] before:outline before:outline-white/15 before:pointer-events-none
+          ${widgetToneClass}
+          rounded-[24px] backdrop-blur-md ring-[1px]
+          before:content-[''] before:absolute before:inset-[1px] before:rounded-[23px] before:outline before:pointer-events-none
           mb-2 cursor-pointer select-none
         `}
         style={{ pointerEvents: "auto" }}
@@ -309,7 +323,10 @@ export const FloatingButton: React.FC = () => {
         )}
       </div>
       {isRecording && intermediateText && (
-        <IntermediateTranscription text={intermediateText} />
+        <IntermediateTranscription
+          text={intermediateText}
+          customPromptActive={isCustomPromptSession}
+        />
       )}
     </div>
   );

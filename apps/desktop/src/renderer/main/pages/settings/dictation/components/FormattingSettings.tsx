@@ -2,6 +2,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { Plus } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import {
@@ -12,6 +13,9 @@ import {
 import { Combobox } from "@/components/ui/combobox";
 import { useFormattingSettings } from "../hooks/use-formatting-settings";
 import { useTranslation } from "react-i18next";
+import { useEffect, useState } from "react";
+
+const CUSTOM_PROMPT_MAX_LENGTH = 2000;
 
 export function FormattingSettings() {
   const { t } = useTranslation();
@@ -27,9 +31,16 @@ export function FormattingSettings() {
     showNoLanguageModels,
     handleFormattingEnabledChange,
     handleFormattingModelChange,
+    customSystemPrompt,
+    handleCustomSystemPromptChange,
     handleCloudLogin,
     isLoginPending,
   } = useFormattingSettings();
+  const [draftPrompt, setDraftPrompt] = useState(customSystemPrompt);
+
+  useEffect(() => {
+    setDraftPrompt(customSystemPrompt);
+  }, [customSystemPrompt]);
 
   return (
     <div className="">
@@ -141,6 +152,38 @@ export function FormattingSettings() {
                 </div>
               )}
             </div>
+          </div>
+          <div className="mt-4 border-t border-border pt-4">
+            <Label className="text-sm font-medium text-foreground mb-2 block">
+              {t("settings.dictation.formatting.customPromptLabel")}
+            </Label>
+            <p className="text-xs text-muted-foreground mb-2">
+              {t("settings.dictation.formatting.customPromptDescription")}
+            </p>
+            <Textarea
+              value={draftPrompt}
+              onChange={(event) => {
+                setDraftPrompt(
+                  event.target.value.slice(0, CUSTOM_PROMPT_MAX_LENGTH),
+                );
+              }}
+              onBlur={() => {
+                if (draftPrompt !== customSystemPrompt) {
+                  handleCustomSystemPromptChange(draftPrompt);
+                }
+              }}
+              placeholder={t(
+                "settings.dictation.formatting.customPromptPlaceholder",
+              )}
+              className="min-h-24 resize-y"
+              maxLength={CUSTOM_PROMPT_MAX_LENGTH}
+            />
+            <p className="mt-1 text-right text-xs text-muted-foreground">
+              {t("settings.dictation.formatting.customPromptCharCount", {
+                count: draftPrompt.length,
+                max: CUSTOM_PROMPT_MAX_LENGTH,
+              })}
+            </p>
           </div>
         </div>
       )}

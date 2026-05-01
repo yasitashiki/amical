@@ -16,6 +16,7 @@ interface UseFormattingSettingsReturn {
   formattingEnabled: boolean;
   selectedModelId: string;
   formattingOptions: ComboboxOption[];
+  customSystemPrompt: string;
 
   // Derived booleans
   disableFormattingToggle: boolean;
@@ -28,6 +29,7 @@ interface UseFormattingSettingsReturn {
   // Handlers
   handleFormattingEnabledChange: (enabled: boolean) => void;
   handleFormattingModelChange: (modelId: string) => void;
+  handleCustomSystemPromptChange: (prompt: string) => void;
   handleCloudLogin: () => Promise<void>;
 
   // Loading state
@@ -128,6 +130,7 @@ export function useFormattingSettings(): UseFormattingSettingsReturn {
     isCloudSpeechSelected && (isAuthenticated ?? false);
   const hasFormattingOptions = hasLanguageModels || canUseCloudFormatting;
   const formattingEnabled = formatterConfig?.enabled ?? false;
+  const customSystemPrompt = formatterConfig?.customSystemPrompt ?? "";
   const disableFormattingToggle = !hasFormattingOptions;
 
   const formattingOptions = useMemo<ComboboxOption[]>(() => {
@@ -226,6 +229,7 @@ export function useFormattingSettings(): UseFormattingSettingsReturn {
         enabled,
         modelId: formatterConfig?.modelId,
         fallbackModelId: formatterConfig?.fallbackModelId,
+        customSystemPrompt: formatterConfig?.customSystemPrompt,
       };
       setFormatterConfigMutation.mutate(nextConfig);
     },
@@ -249,6 +253,7 @@ export function useFormattingSettings(): UseFormattingSettingsReturn {
         enabled: formatterConfig?.enabled ?? false,
         modelId,
         fallbackModelId: formatterConfig?.fallbackModelId,
+        customSystemPrompt: formatterConfig?.customSystemPrompt,
       };
 
       if (modelId !== cloudFormattingOptionValue) {
@@ -271,6 +276,19 @@ export function useFormattingSettings(): UseFormattingSettingsReturn {
     ],
   );
 
+  const handleCustomSystemPromptChange = useCallback(
+    (prompt: string) => {
+      const nextConfig: FormatterConfig = {
+        enabled: formatterConfig?.enabled ?? false,
+        modelId: formatterConfig?.modelId,
+        fallbackModelId: formatterConfig?.fallbackModelId,
+        customSystemPrompt: prompt.trim() ? prompt : undefined,
+      };
+      setFormatterConfigMutation.mutate(nextConfig);
+    },
+    [formatterConfig, setFormatterConfigMutation],
+  );
+
   const handleCloudLogin = useCallback(async () => {
     try {
       await loginMutation.mutateAsync();
@@ -284,6 +302,7 @@ export function useFormattingSettings(): UseFormattingSettingsReturn {
     formattingEnabled,
     selectedModelId,
     formattingOptions,
+    customSystemPrompt,
 
     // Derived booleans
     disableFormattingToggle,
@@ -296,6 +315,7 @@ export function useFormattingSettings(): UseFormattingSettingsReturn {
     // Handlers
     handleFormattingEnabledChange,
     handleFormattingModelChange,
+    handleCustomSystemPromptChange,
     handleCloudLogin,
 
     // Loading state

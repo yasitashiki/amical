@@ -119,6 +119,7 @@ export interface AppSettingsData {
     enabled: boolean;
     modelId?: string; // Selection key "<providerInstanceId>::<type>::<id>" or legacy raw model ID
     fallbackModelId?: string; // Last non-cloud formatting selection key or legacy raw model ID
+    customSystemPrompt?: string;
   };
   ui?: {
     theme: "light" | "dark" | "system";

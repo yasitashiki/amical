@@ -11,6 +11,8 @@ import {
   type ValidationResult,
 } from "@/utils/shortcut-validation";
 import { MAC_KEYCODES, WINDOWS_KEYCODES } from "@/utils/keycodes";
+import { matchesCustomPromptToggleShortcut } from "@/utils/custom-prompt";
+import { matchesToggleRecordingNoClipboardShortcut } from "@/utils/hardcoded-shortcuts";
 
 const log = logger.main;
 const PRESSED_KEYS_RECHECK_INTERVAL_MS = 10000;
@@ -42,6 +44,7 @@ export class ShortcutManager extends EventEmitter {
   private recheckInterval: NodeJS.Timeout | null = null;
   private exactMatchState = {
     toggleRecording: false,
+    customPromptToggle: false,
     pasteLastTranscript: false,
     newNote: false,
   };
@@ -187,6 +190,7 @@ export class ShortcutManager extends EventEmitter {
     this.isRecordingShortcut = isRecording;
     if (isRecording) {
       this.exactMatchState.toggleRecording = false;
+      this.exactMatchState.customPromptToggle = false;
       this.exactMatchState.pasteLastTranscript = false;
       this.exactMatchState.newNote = false;
     }
@@ -293,6 +297,16 @@ export class ShortcutManager extends EventEmitter {
     }
     this.exactMatchState.toggleRecording = toggleMatch;
 
+    // Check custom prompt toggle recording shortcut
+    const customPromptToggleMatch = this.isCustomPromptToggleShortcutPressed();
+    if (
+      customPromptToggleMatch &&
+      !this.exactMatchState.customPromptToggle
+    ) {
+      this.emit("toggle-recording-custom-prompt-triggered");
+    }
+    this.exactMatchState.customPromptToggle = customPromptToggleMatch;
+
     // Check paste last transcript shortcut
     const pasteMatch = this.isPasteLastTranscriptShortcutPressed();
     if (pasteMatch && !this.exactMatchState.pasteLastTranscript) {
@@ -330,16 +344,12 @@ export class ShortcutManager extends EventEmitter {
     this.ctrlEscapeWasPressed = isCtrlEscapePressed;
 
     // Check Ctrl+F9 for toggle recording without clipboard copy (hardcoded)
-    const ctrlKeyCode =
-      process.platform === "win32"
-        ? WINDOWS_KEYCODES.CTRL
-        : MAC_KEYCODES.CTRL;
-    const f9KeyCode =
-      process.platform === "win32" ? WINDOWS_KEYCODES.F9 : MAC_KEYCODES.F9;
-    const isCtrlF9Pressed =
-      activeKeysList.length === 2 &&
-      activeKeysList.includes(ctrlKeyCode) &&
-      activeKeysList.includes(f9KeyCode);
+    const isCtrlF9Pressed = matchesToggleRecordingNoClipboardShortcut({
+      activeKeys: activeKeysList,
+      payload,
+      eventType,
+      platform: process.platform,
+    });
     if (isCtrlF9Pressed && !this.ctrlF9WasPressed) {
       this.emit("toggle-recording-no-clipboard-triggered");
     }
@@ -370,6 +380,14 @@ export class ShortcutManager extends EventEmitter {
     return (
       toggleKeys.length === activeKeysList.length &&
       toggleKeys.every((keyCode) => activeKeysList.includes(keyCode))
+    );
+  }
+
+  private isCustomPromptToggleShortcutPressed(): boolean {
+    return matchesCustomPromptToggleShortcut(
+      this.getActiveKeys(),
+      this.shortcuts.toggleRecording,
+      process.platform,
     );
   }
 

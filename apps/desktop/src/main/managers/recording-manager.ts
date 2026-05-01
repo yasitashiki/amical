@@ -80,6 +80,8 @@ export class RecordingManager extends EventEmitter {
   private soundsMuted: boolean = false;
   // Skip clipboard copy for current session
   private skipClipboard: boolean = false;
+  // Whether the current session should apply the custom formatting prompt
+  private customPromptActive: boolean = false;
 
   constructor(private serviceManager: ServiceManager) {
     super();
@@ -107,6 +109,10 @@ export class RecordingManager extends EventEmitter {
     // Handle toggle recording
     shortcutManager.on("toggle-recording-triggered", async () => {
       await this.toggleHandsFree();
+    });
+
+    shortcutManager.on("toggle-recording-custom-prompt-triggered", async () => {
+      await this.toggleHandsFree({ customPromptActive: true });
     });
 
     // Handle paste last transcription shortcut
@@ -162,6 +168,10 @@ export class RecordingManager extends EventEmitter {
     return this.recordingMode;
   }
 
+  public getCustomPromptActive(): boolean {
+    return this.customPromptActive;
+  }
+
   // ═══════════════════════════════════════════════════════════════════
   // EVENT HANDLERS
   // ═══════════════════════════════════════════════════════════════════
@@ -180,7 +190,7 @@ export class RecordingManager extends EventEmitter {
     // Not recording? Start PTT recording
     if (this.recordingState === "idle") {
       this.recordingInitiatedAt = Date.now();
-      await this.doStart("ptt");
+      await this.doStart("ptt", { customPromptActive: false });
       return;
     }
 
@@ -220,7 +230,7 @@ export class RecordingManager extends EventEmitter {
 
   // Toggle shortcut pressed
   public async toggleHandsFree(
-    options?: { skipClipboard?: boolean },
+    options?: { skipClipboard?: boolean; customPromptActive?: boolean },
   ) {
     // Double-tap detection: timer pending means quick release happened
     if (this.cancelTimer) {
@@ -235,7 +245,9 @@ export class RecordingManager extends EventEmitter {
     if (this.recordingState === "idle") {
       this.skipClipboard = options?.skipClipboard ?? false;
       this.recordingInitiatedAt = Date.now();
-      await this.doStart("hands-free");
+      await this.doStart("hands-free", {
+        customPromptActive: options?.customPromptActive ?? false,
+      });
       return;
     }
 
@@ -267,7 +279,10 @@ export class RecordingManager extends EventEmitter {
   /**
    * Start recording with mutex protection
    */
-  private async doStart(mode: "ptt" | "hands-free") {
+  private async doStart(
+    mode: "ptt" | "hands-free",
+    options?: { customPromptActive?: boolean },
+  ) {
     await this.lifecycleMutex.runExclusive(async () => {
       if (this.recordingState !== "idle") {
         logger.audio.warn("Cannot start recording - not idle", {
@@ -285,6 +300,8 @@ export class RecordingManager extends EventEmitter {
 
       const startTime = performance.now();
       logger.audio.info("RecordingManager: doStart called", { mode });
+
+      this.customPromptActive = options?.customPromptActive ?? false;
 
       // Sync state broadcast
       this.setState("starting");
@@ -308,6 +325,7 @@ export class RecordingManager extends EventEmitter {
       const totalDuration = performance.now() - startTime;
       logger.audio.info("Recording started", {
         sessionId: this.currentSessionId,
+        customPromptActive: this.customPromptActive,
         duration: `${totalDuration.toFixed(2)}ms`,
       });
     });
@@ -628,6 +646,7 @@ export class RecordingManager extends EventEmitter {
         audioFilePath: audioFilePath || undefined,
         recordingStartedAt: this.recordingStartedAt || undefined,
         recordingStoppedAt: this.recordingStoppedAt || undefined,
+        customPromptActive: this.customPromptActive,
       });
     } catch (error) {
       logger.audio.error("Failed to get final transcription", { error });
@@ -919,6 +938,7 @@ export class RecordingManager extends EventEmitter {
     this.systemAudioMuted = false;
     this.soundsMuted = false;
     this.skipClipboard = false;
+    this.customPromptActive = false;
     this.clearTimers();
   }
 
@@ -1058,7 +1078,7 @@ export class RecordingManager extends EventEmitter {
   public async signalStart(): Promise<void> {
     if (this.recordingState === "idle") {
       this.recordingInitiatedAt = Date.now();
-      await this.doStart("hands-free");
+      await this.doStart("hands-free", { customPromptActive: false });
     }
   }
 

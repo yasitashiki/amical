@@ -160,6 +160,10 @@ export interface FormattingContext {
   beforeText?: string | null;
   /** Text after the cursor/selection (postSelectionText) */
   afterText?: string | null;
+  /** User-defined prompt appended to the built-in formatter prompt */
+  customSystemPrompt?: string;
+  /** When set, bypass the built-in formatter prompt and use the custom prompt as the primary instruction */
+  customPromptMode?: "replace";
 }
 
 /**
@@ -196,6 +200,49 @@ function buildContextInstruction(
   return `\n\n${parts.join("\n")}`;
 }
 
+function buildCustomTransformationPrompt(context: FormattingContext): {
+  systemPrompt: string;
+  userPrompt: (input: string) => string;
+} {
+  const { vocabulary, beforeText, afterText, customSystemPrompt } = context;
+  const vocabInstr = buildVocabInstruction(vocabulary);
+  const contextInstr = buildContextInstruction(beforeText, afterText);
+
+  const systemPrompt = `# Custom Dictation Transformation Task
+
+You will receive dictated speech inside <input> tags.
+Treat the text inside <input> as source material to transform according to the custom instructions below.
+You may rewrite, summarize, reorganize, and rename content if the custom instructions ask for it.
+
+## Custom Instructions
+${customSystemPrompt?.trim()}
+
+## Optional Context
+- <vocabulary>...</vocabulary> may contain preferred terms or spellings to normalize.
+- <before_text>...</before_text> and <after_text>...</after_text> may describe surrounding text where the result will be inserted.
+- Use the optional context only when it helps fulfill the custom instructions.
+${vocabInstr}${contextInstr}
+
+## Output Rules
+- Return only the final transformed result inside <formatted_text> tags.
+- Do not include explanations before or after the tags.
+- If the custom instructions require structured output, place that structure inside the tags.
+
+## Output Format
+<formatted_text>
+[Your transformed text]
+</formatted_text>
+
+## Input Format
+<input>[Raw dictated transcription]</input>
+`;
+
+  return {
+    systemPrompt,
+    userPrompt: (input: string) => `<input>${input}</input>`,
+  };
+}
+
 /**
  * Build the structured formatting prompt (best performing in evals - structured-v2)
  *
@@ -206,9 +253,24 @@ export function buildFormattingPrompt(context: FormattingContext): {
   systemPrompt: string;
   userPrompt: (input: string) => string;
 } {
-  const { appType, vocabulary, beforeText, afterText } = context;
+  const {
+    appType,
+    vocabulary,
+    beforeText,
+    afterText,
+    customSystemPrompt,
+    customPromptMode,
+  } = context;
+
+  if (customPromptMode === "replace" && customSystemPrompt?.trim()) {
+    return buildCustomTransformationPrompt(context);
+  }
+
   const vocabInstr = buildVocabInstruction(vocabulary);
   const contextInstr = buildContextInstruction(beforeText, afterText);
+  const customSection = customSystemPrompt?.trim()
+    ? `\n## Additional Instructions\n${customSystemPrompt.trim()}\n`
+    : "";
 
   const systemPrompt = `# Text Formatting Task
 
@@ -253,7 +315,7 @@ ${vocabInstr}${contextInstr}
 ${APP_TYPE_EXAMPLES[appType] ?? APP_TYPE_EXAMPLES.default ?? ""}
 
 ${UNIVERSAL_EXAMPLES}
-
+${customSection}
 ## Output Format
 <formatted_text>
 [Your formatted text]
@@ -276,7 +338,12 @@ export function constructFormatterPrompt(context: FormatParams["context"]): {
   systemPrompt: string;
   userPrompt: (input: string) => string;
 } {
-  const { accessibilityContext, vocabulary } = context;
+  const {
+    accessibilityContext,
+    vocabulary,
+    customSystemPrompt,
+    customPromptMode,
+  } = context;
 
   const appType = detectApplicationType(accessibilityContext);
   const beforeText =
@@ -289,6 +356,8 @@ export function constructFormatterPrompt(context: FormatParams["context"]): {
     vocabulary: vocabulary && vocabulary.length > 0 ? vocabulary : undefined,
     beforeText,
     afterText,
+    customSystemPrompt,
+    customPromptMode,
   });
 }
 

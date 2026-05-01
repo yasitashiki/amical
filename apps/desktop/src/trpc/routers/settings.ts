@@ -17,6 +17,7 @@ const FormatterConfigSchema = z.object({
   enabled: z.boolean(),
   modelId: z.string().optional(),
   fallbackModelId: z.string().optional(),
+  customSystemPrompt: z.string().max(2000).optional(),
 });
 
 // Shortcut schema (array of keycodes)

@@ -691,6 +691,10 @@
         "cloudReady": "Using Amical Cloud formatting.",
         "noLanguageModels": "Formatting won't run - no language model available.",
         "syncLanguageModels": "Sync language models",
+        "customPromptLabel": "Custom instructions",
+        "customPromptDescription": "Append extra instructions to the built-in formatting prompt.",
+        "customPromptPlaceholder": "Example: Convert the result into concise bullet points.",
+        "customPromptCharCount": "{{count}} / {{max}} characters",
         "toast": {
           "saveFailed": "Failed to save formatting settings. Please try again.",
           "loginInBrowser": "Complete login in your browser",

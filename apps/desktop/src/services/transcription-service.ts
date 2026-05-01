@@ -38,6 +38,7 @@ import {
   getSpeechModelSelectionKey,
   isAmicalCloudSelectionValue,
 } from "../utils/model-selection";
+import { resolveCustomPromptForSession } from "../utils/custom-prompt";
 import { countWords } from "../utils/dictation-stats";
 
 /**
@@ -397,9 +398,15 @@ export class TranscriptionService {
     audioFilePath?: string;
     recordingStartedAt?: number;
     recordingStoppedAt?: number;
+    customPromptActive?: boolean;
   }): Promise<string> {
-    const { sessionId, audioFilePath, recordingStartedAt, recordingStoppedAt } =
-      options;
+    const {
+      sessionId,
+      audioFilePath,
+      recordingStartedAt,
+      recordingStoppedAt,
+      customPromptActive = false,
+    } = options;
 
     const session = this.streamingSessions.get(sessionId);
     if (!session) {
@@ -417,6 +424,7 @@ export class TranscriptionService {
 
       const formatterConfig = await this.settingsService.getFormatterConfig();
       const shouldUseCloudFormatting =
+        customPromptActive &&
         formatterConfig?.enabled &&
         isAmicalCloudSelectionValue(formatterConfig.modelId);
       let usedCloudProvider = false;
@@ -497,6 +505,8 @@ export class TranscriptionService {
         replacements: session.context.sharedData.replacements,
         formattingStyle:
           session.context.sharedData.userPreferences?.formattingStyle,
+        formattingAllowed: customPromptActive,
+        customPromptActive,
       });
       const completeTranscription = formatResult.text;
       const transcriptionWordCount = countWords(
@@ -713,6 +723,8 @@ export class TranscriptionService {
       style?: string;
       vocabulary?: string[];
       accessibilityContext?: StreamingSession["context"]["sharedData"]["accessibilityContext"];
+      customSystemPrompt?: string;
+      customPromptMode?: "replace";
     },
   ): Promise<{ text: string; duration: number } | null> {
     const startTime = performance.now();
@@ -725,6 +737,8 @@ export class TranscriptionService {
           vocabulary: context.vocabulary,
           accessibilityContext: context.accessibilityContext,
           aggregatedTranscription: text,
+          customSystemPrompt: context.customSystemPrompt,
+          customPromptMode: context.customPromptMode,
         },
       });
 
@@ -756,6 +770,8 @@ export class TranscriptionService {
     accessibilityContext?: StreamingSession["context"]["sharedData"]["accessibilityContext"];
     replacements: Map<string, string>;
     formattingStyle?: string;
+    formattingAllowed?: boolean;
+    customPromptActive?: boolean;
   }): Promise<{
     text: string;
     textBeforeReplacements: string;
@@ -769,8 +785,14 @@ export class TranscriptionService {
     let formattingDuration: number | undefined;
 
     const formatterConfig = await this.settingsService.getFormatterConfig();
+    const customSystemPrompt = resolveCustomPromptForSession(
+      formatterConfig,
+      options.customPromptActive ?? false,
+    );
 
-    if (!formatterConfig || !formatterConfig.enabled) {
+    if (options.formattingAllowed === false) {
+      logger.transcription.debug("Formatting skipped: disabled for this session");
+    } else if (!formatterConfig || !formatterConfig.enabled) {
       logger.transcription.debug("Formatting skipped: disabled in config");
     } else if (!text.trim().length) {
       logger.transcription.debug("Formatting skipped: empty transcription");
@@ -825,6 +847,8 @@ export class TranscriptionService {
               style: options.formattingStyle,
               vocabulary: options.vocabulary,
               accessibilityContext: options.accessibilityContext,
+              customSystemPrompt,
+              customPromptMode: customSystemPrompt ? "replace" : undefined,
             });
             if (result) {
               text = result.text;

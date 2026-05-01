@@ -7,6 +7,7 @@ import type { RecordingMode } from "@/main/managers/recording-manager";
 export interface RecordingStatus {
   state: RecordingState;
   mode: RecordingMode;
+  customPromptActive: boolean;
 }
 
 export interface UseRecordingOutput {
@@ -20,6 +21,7 @@ export const useRecording = (): UseRecordingOutput => {
   const [recordingStatus, setRecordingStatus] = useState<RecordingStatus>({
     state: "idle",
     mode: "idle",
+    customPromptActive: false,
   });
 
   const startRecordingMutation = api.recording.signalStart.useMutation();
